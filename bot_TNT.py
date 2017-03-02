@@ -1,24 +1,10 @@
-from init_game import general
+
 import logging
-from generals_io_client import generals
 import math
 import numpy as np
+from generals_io_client import generals
 
 logging.basicConfig(level=logging.DEBUG)
-
-# first_update=general.get_updates()[0]
-# rows=first_update['rows']
-# cols=first_update['cols']
-# our_flag=first_update['player_index']
-# general_y, general_x =first_update['generals'][our_flag]
-our_flag=0
-
-general_y, general_x =0,0
-general_position=(general_y,general_x)
-tiles=[]
-armies=[]
-cities=[]
-generals_list=[]
 
 
 def position_plus(a,b):
@@ -37,6 +23,7 @@ MOUNTAIN = -2
 FOG = -3
 OBSTACLE = -4
 MAX_MAP_WIDTH = 22
+MAP_CHANNELS = 11
 
 def pad(state, fill_value = 0):
     # Pad the frames to be 50x50
@@ -48,9 +35,11 @@ def pad(state, fill_value = 0):
     return np.pad(state, pad_width=(y_padding, x_padding), 
                 mode='constant', constant_values=fill_value), y_padding, x_padding
 
-map_state = np.zeros((MAX_MAP_WIDTH, MAX_MAP_WIDTH, 11)).astype('int32')
+def generate_blank_state():
+    return np.zeros((MAX_MAP_WIDTH, MAX_MAP_WIDTH, MAP_CHANNELS)).astype('int32')
+map_state = generate_blank_state()
 
-def update_state(tiles, armies, cities, generals_list):
+def update_state(map_state, tiles, armies, cities, generals_list, player, enemy):
     tiles, y_padding, x_padding = pad(np.array(tiles), MOUNTAIN)
     armies, y_padding, x_padding = pad(np.array(armies), 0)
     
@@ -58,9 +47,9 @@ def update_state(tiles, armies, cities, generals_list):
     y_offset = y_padding[0]
     x_offset = x_padding[0]
     # Set tile ownerships
-    map_state[:,:,0] = tiles == our_flag                            # Owned by us
+    map_state[:,:,0] = tiles == player                            # Owned by us
     map_state[:,:,1] = tiles < 0 # Neutral
-    map_state[:,:,2] = tiles == enemy_flag                          # Owned by enemy
+    map_state[:,:,2] = tiles == enemy                          # Owned by enemy
     
     # Set tile types
     map_state[:, :, 3] = tiles == EMPTY # Set empty tiles
@@ -86,39 +75,55 @@ def update_state(tiles, armies, cities, generals_list):
     
     # Set army unit counts
     map_state[:,:,10] = armies
+    return map_state
 
 
 
-# ------------Main Bot Loop Logic Begins------------
-for state in general.get_updates():
-
-    # get position of your general
-    our_flag = state['player_index']
-    enemy_flag = 1 if our_flag == 0 else 0
-    try:
-        general_y, general_x = state['generals'][our_flag]
-    except KeyError:
-        break
-
-    rows, cols = state['rows'], state['cols']
-
-    turn = state['turn']
-    tiles = np.array(state['tile_grid'])
-    armies = np.array(state['army_grid'])
-    cities = state['cities']
-    generals_list = state['generals']
+if __name__ == "__main__":
+    from init_game import general
+    # first_update=general.get_updates()[0]
+    # rows=first_update['rows']
+    # cols=first_update['cols']
+    # our_flag=first_update['player_index']
+    # general_y, general_x =first_update['generals'][our_flag]
+    our_flag=0
     
-    # Update the map_state which is a 22x22x11 map tile array with 11 channels per tile
-    update_state(tiles, armies, cities, generals_list)
-    #map_state[:, :, 0:3] (Owned by me, Neutral, Owned by enemy)
-    #map_state[:, :, 3:7] (Normal, Mountain, City, General)
-    #map_state[:, :, 7] Tile is in fog
-    #map_state[:, :, 8] Tile has been discoevered
-    #map_state[:, :, 9] NUmber of turns in fog
-    #map_state[:, :, 10] Number of army units on tile
+    general_y, general_x =0,0
+    general_position=(general_y,general_x)
+    tiles=[]
+    armies=[]
+    cities=[]
+    generals_list=[]
+    # ------------Main Bot Loop Logic Begins------------
+    for state in general.get_updates():
     
-    # TODO: Feed the above state into neural network, get output move, and then
-    # submit move using generals.move(y_origin, x_origin, y_destination, x_destination) and then repeat
+        # get position of your general
+        our_flag = state['player_index']
+        enemy_flag = 1 if our_flag == 0 else 0
+        try:
+            general_y, general_x = state['generals'][our_flag]
+        except KeyError:
+            break
+    
+        rows, cols = state['rows'], state['cols']
+    
+        turn = state['turn']
+        tiles = np.array(state['tile_grid'])
+        armies = np.array(state['army_grid'])
+        cities = state['cities']
+        generals_list = state['generals']
+        
+        # Update the map_state which is a 22x22x11 map tile array with 11 channels per tile
+        update_state(tiles, armies, cities, generals_list, our_flag, enemy_flag)
+        #map_state[:, :, 0:3] (Owned by me, Neutral, Owned by enemy)
+        #map_state[:, :, 3:7] (Normal, Mountain, City, General)
+        #map_state[:, :, 7] Tile is in fog
+        #map_state[:, :, 8] Tile has been discoevered
+        #map_state[:, :, 9] NUmber of turns in fog
+        #map_state[:, :, 10] Number of army units on tile
+        
+        # TODO: Feed the above state into neural network, get output move, and then
+        # submit move using generals.move(y_origin, x_origin, y_destination, x_destination) and then repeat
 
 
 
