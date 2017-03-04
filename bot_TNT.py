@@ -3,7 +3,8 @@ import logging
 import math
 import numpy as np
 from generals_io_client import generals
-
+from game import MAX_MAP_WIDTH
+import sys
 logging.basicConfig(level=logging.DEBUG)
 
 
@@ -22,14 +23,14 @@ EMPTY = -1
 MOUNTAIN = -2
 FOG = -3
 OBSTACLE = -4
-MAX_MAP_WIDTH = 22
 MAP_CHANNELS = 11
+MODEL_NAME = sys.argv[1]
 
-def pad(state, fill_value = 0):
+def pad(state, fill_value = 0, map_width = MAX_MAP_WIDTH):
     # Pad the frames to be 50x50
-    x_diff = float(MAX_MAP_WIDTH - state.shape[1]) / 2
+    x_diff = float(map_width - state.shape[1]) / 2
     x_padding = (math.ceil(x_diff), math.floor(x_diff))
-    y_diff = float(MAX_MAP_WIDTH - state.shape[0]) / 2
+    y_diff = float(map_width - state.shape[0]) / 2
     y_padding = (math.ceil(y_diff), math.floor(y_diff))
     #print("hhhh --", y_padding, x_padding, state.shape)
     return np.pad(state, pad_width=(y_padding, x_padding), 
@@ -81,6 +82,14 @@ def update_state(map_state, tiles, armies, cities, generals_list, player, enemy)
 
 if __name__ == "__main__":
     from init_game import general
+    import os, sys
+    model = None
+    #from keras.models import load_model
+    print("---Loading model----")
+    #model = load_model('{}.h5'.format(MODEL_NAME), {'multi_label_crossentropy' : multi_label_crossentropy})
+    from train_imitation import load_model_train
+    model = load_model_train("./data", MODEL_NAME)
+    print("---Loaded model!----")
     # first_update=general.get_updates()[0]
     # rows=first_update['rows']
     # cols=first_update['cols']
@@ -95,8 +104,9 @@ if __name__ == "__main__":
     cities=[]
     generals_list=[]
     # ------------Main Bot Loop Logic Begins------------
+    print("Waiting for updates...")
     for state in general.get_updates():
-    
+        print("STARTING MOVEE!!!")
         # get position of your general
         our_flag = state['player_index']
         enemy_flag = 1 if our_flag == 0 else 0
@@ -113,8 +123,10 @@ if __name__ == "__main__":
         cities = state['cities']
         generals_list = state['generals']
         
+        tiles_copy, y_padding, x_padding = pad(np.copy(tiles), MOUNTAIN, 22)
+        armies_copy, y_padding, x_padding = pad(np.copy(armies), 0, 22)
         # Update the map_state which is a 22x22x11 map tile array with 11 channels per tile
-        update_state(tiles, armies, cities, generals_list, our_flag, enemy_flag)
+        update_state(map_state, tiles, armies, cities, generals_list, our_flag, enemy_flag)
         #map_state[:, :, 0:3] (Owned by me, Neutral, Owned by enemy)
         #map_state[:, :, 3:7] (Normal, Mountain, City, General)
         #map_state[:, :, 7] Tile is in fog
@@ -122,6 +134,52 @@ if __name__ == "__main__":
         #map_state[:, :, 9] NUmber of turns in fog
         #map_state[:, :, 10] Number of army units on tile
         
+        model_output = model.predict(np.array([map_state]))
+        
+        tile_position, move_direction, is50 = model_output[0], model_output[1], model_output[2]
+        tile_position = tile_position.reshape(22, 22)
+        
+        tile_mask = (tiles_copy == our_flag).astype('float32')
+        print(tile_position.astype('float32'))
+        print(move_direction)
+        print(move_direction.argmax())
+        print(is50)
+        tile_position = tile_position * tile_mask
+        
+        tile_position = tile_position[y_padding[0]:22-y_padding[1], x_padding[0]:22-x_padding[1]]
+        y, x = np.unravel_index(tile_position.argmax(), tile_position.shape)
+        print("Best pos: ", y, x)
+        print("General: ", general_y, general_x)
+        target_move = move_direction.argmax()
+        STILL = 0
+        NORTH = 1
+        EAST = 2
+        SOUTH = 3
+        WEST = 4
+        x = int(x)
+        y = int(y)
+        
+        if target_move == STILL:
+            y_dest = y
+            x_dest = x
+        elif target_move == NORTH:
+            y_dest = y - 1
+            x_dest = x
+        elif target_move == EAST:
+            y_dest = y
+            x_dest = x + 1
+        elif target_move == SOUTH:
+            y_dest = y + 1
+            x_dest = x
+        elif target_move == WEST:
+            y_dest = y
+            x_dest = x - 1
+        
+        print(state['replay_url'])
+        x_dest = int(x_dest)
+        y_dest = int(y_dest)
+        print("Submitting move from ({}, {}) to ({}, {})".format(y, x, y_dest, x_dest))
+        general.move(y, x, y_dest, x_dest)
         # TODO: Feed the above state into neural network, get output move, and then
         # submit move using generals.move(y_origin, x_origin, y_destination, x_destination) and then repeat
 

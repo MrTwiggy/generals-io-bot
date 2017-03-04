@@ -16,7 +16,8 @@ import time
 import traceback
 import game as generals_game
 import generals_map
-from bot_TNT import MAX_MAP_WIDTH, MAP_CHANNELS, update_state, generate_blank_state, pad
+from bot_TNT import MAP_CHANNELS, update_state, generate_blank_state, pad
+from game import MAX_MAP_WIDTH, ORIGINAL_MAX_MAP_WIDTH
 
 import multiprocessing
 
@@ -56,15 +57,29 @@ def generate_target(game, move):
         elif end_y - start_y == 1:
             direction = SOUTH
     
-    tile_choice, _, _ = pad(tile_choice, 0)
-    direction_target = (np.arange(5) == direction)
-    return np.concatenate((tile_choice.flatten(), direction_target.flatten(), np.array([is50])), axis=0)
+    tile_choice, _, _ = pad(tile_choice, 0, ORIGINAL_MAX_MAP_WIDTH)
+    tile_choice = tile_choice.astype('float32')
+    is50_target = np.array([is50]).astype('float32')
+    direction_target = (np.arange(5) == direction).astype('float32')
+    #if (direction_target.argmax() == 0):
+    #    print(direction_target)
+    
+    output = np.concatenate((tile_choice.flatten(), direction_target.flatten(), is50_target), axis=0)
+    
+    if (not np.array_equal(output[484:489], direction_target)):
+        print("WTF ERROR ", output[484:489], direction_target)
+        print(tile_choice.shape, direction_target.shape, is50_target.shape, output.shape)
+    return output
+    #return tile_choice.flatten(), direction_target.flatten(), np.array([is50])
 
 def load_replays(threadId, replayFolder, replayNames, data_input, data_target, lock):
     print("Initializing thread {} for loading {} files!".format(threadId, len(replayNames)))
+    start_time = time.time()
     for index, replay_name in replayNames:
         try:
-            print('Loading {} on thread {} ({}/{}) with utilization'.format(replay_name, threadId, index, len(replayNames)))
+            broken_replay = False
+            print('Loading {} on thread {} ({}/{}) with utilization in {} seconds'.format(replay_name, 
+                  threadId, index, len(replayNames), time.time() - start_time))
             replay = json.load(open('{}/{}'.format(replayFolder,replay_name)))
             
             map_width = replay['mapWidth']
@@ -98,6 +113,9 @@ def load_replays(threadId, replayFolder, replayNames, data_input, data_target, l
             move_index = 0
             print("Beginning simulation...")
             while not game.is_over():
+                if (len(afks) == 0 or afks[0]['turn'] < game.turn) and move_index >= moves_count:
+                    broken_replay = True
+                    break
                 # Generate the current game state from the perspective of player with target_id index
                 #game_state = game.generate_state(target_id)
                 target_moves = [None, None]
@@ -119,7 +137,8 @@ def load_replays(threadId, replayFolder, replayNames, data_input, data_target, l
                     print("KIlling AFK player ", afks[0]['index'])
                 
                 if ((game.turn - 1) % 1500 == 0):
-                    game.print_game()
+                    b = 1
+                    #game.print_game()
                 
                 # Add the state to training data if warranted
                 for i in range(2):
@@ -127,9 +146,9 @@ def load_replays(threadId, replayFolder, replayNames, data_input, data_target, l
                     
                     target_move = target_moves[i]
                     
-                    if target_move == None and np.random.binomial(1, 0.95):
+                    if target_move == None and np.random.binomial(1, 0.98):
                         continue
-                    if target_move is not None and np.random.binomial(1, 0.95):
+                    if target_move is not None and np.random.binomial(1, 0.9):
                         continue
                     tiles, armies, cities, generals = map_states[i]
                     tiles = tiles.reshape(map_height, map_width)
@@ -137,12 +156,15 @@ def load_replays(threadId, replayFolder, replayNames, data_input, data_target, l
                     game_states[i] = update_state(game_states[i], tiles, armies, cities, generals, i, enemy)
                     replay_inputs[i].append(game_states[i])
                     target = generate_target(game, target_move)
-                    print("Target shape ", target.shape)
+                    #print("Target shape ", target.shape)
                     replay_targets[i].append(target)
                 
                 # Update the game and proceed to the next turn
                 game.update()
             
+            if broken_replay:
+                print("Ending simulation as it failed to produce valid results in completion!")
+                continue
             print("Ending simulation with winner {} after {} turns...".format(game.winner(), game.turn))
             game_winner = game.winner()
             print("Sampled ", len(replay_inputs[game_winner]))
@@ -157,8 +179,8 @@ def load_replays(threadId, replayFolder, replayNames, data_input, data_target, l
             # Reduce the total training data set from this replay by sampling select states            
             
             # Add the sample states and targets to the thread-safe queue
-            target_length = MAX_MAP_WIDTH*MAX_MAP_WIDTH + 6
-            replay_inputs[game_winner] = np.concatenate(replay_inputs[game_winner],axis=0).reshape(-1, 22, 22, 11)
+            target_length = ORIGINAL_MAX_MAP_WIDTH*ORIGINAL_MAX_MAP_WIDTH + 6
+            replay_inputs[game_winner] = np.concatenate(replay_inputs[game_winner],axis=0).reshape(-1, MAX_MAP_WIDTH, MAX_MAP_WIDTH, MAP_CHANNELS)
             replay_targets[game_winner] = np.concatenate(replay_targets[game_winner],axis=0).reshape(-1, target_length)
             print("Shape: ", replay_inputs[game_winner].shape, replay_targets[game_winner].shape)
             lock.acquire()
@@ -226,6 +248,17 @@ def load_all_replays(replayFolder, gamesToLoad, threadCount=8):
     
     print("Finishing loading data, now beginning to save to disk...")
     print("Finished loading and saving data!")
+    
+    move_counts = [0 for i in range(5)]
+    fuck = 0
+    move_choices = training_target[:, 484:489]
+    for i in range(len(move_choices)):
+        move = move_choices[i].argmax()
+        move_counts[move] += 1
+        if (np.array_equal(move_choices[i], np.zeros(5))):
+            fuck += 1
+    
+    print("---TABULATED MOVE COUNTS: ", move_counts, move_counts / np.sum(move_counts), fuck)
     return training_input, training_target
 
 

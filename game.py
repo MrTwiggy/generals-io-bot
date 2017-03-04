@@ -1,13 +1,17 @@
 import numpy as np
 import generals_map
-
+import scipy.ndimage as ndimage
 from generals_map import Map
+
+MAX_MAP_WIDTH = 30
+ORIGINAL_MAX_MAP_WIDTH = 22
 
 class Game:
     DEAD_GENERAL = -1
     RECRUIT_RATE = 2 # How often generators generate a unit (in turns)
     FARM_RATE = 50  # How often owned tiles generate a unit (in turns)
     MIN_CITY_ARMY = 40 # MInimum number of units in a city before it begins generating
+    DILATION_STRUCTURE = np.ones(9).reshape(3,3)
     
     @staticmethod
     def from_replay(replay):
@@ -54,8 +58,8 @@ class Game:
         
     
     def generate_state(self, player):
-        tiles = np.copy(self.gmap._map)
-        armies = np.copy(self.gmap._armies)
+        tiles = np.copy(self.gmap._map).reshape(self.gmap.height, self.gmap.width)
+        armies = np.copy(self.gmap._armies).reshape(self.gmap.height, self.gmap.width)
         cities = []
         generals = []
         
@@ -66,13 +70,55 @@ class Game:
         for city in self.cities:
             if self.gmap.has_view_of(player, city):
                 cities.append(self.index_to_coordinates(city))
+                
+        owned_tiles = (np.copy(tiles) == player).astype('int8')
+        """for x in [-1, 0, 1]:
+            for y in [-1, 0, 1]:
+                if x == 0 and y == 0: continue
+                temp = np.roll(np.copy(owned_tiles), shift=y, axis=0)
+                temp = np.roll(temp, shift=x, axis=1)
+                
+                if x == -1:
+                    temp[:,-1] = 0
+                elif x == 1:
+                    temp[:,0] = 0
+                
+                if y == -1:
+                    temp[-1,:] = 0
+                elif y == 1:
+                    temp[0, :] = 0
+                
+                owned_tiles += temp
+        owned_tiles = owned_tiles > 0"""
+        before = np.copy(owned_tiles)
+        owned_tiles = ndimage.binary_dilation(owned_tiles, structure=Game.DILATION_STRUCTURE)
+        debug = np.random.binomial(1, 0)#0.0005)
         
-        for i in range(self.gmap.size()):
+        if debug:
+            print("Testing---")
+            print(owned_tiles.astype('int8'))
+            print(before)
+            print(tiles.astype('int8'))
+            print(armies.astype('int16'))
+            print("----------------------", player)
+        armies *= owned_tiles
+        
+        tiles[np.logical_and(owned_tiles == 0, tiles != Map.TILE_MOUNTAIN)] = Map.TILE_FOG
+        tiles[np.logical_and(owned_tiles == 0, tiles == Map.TILE_MOUNTAIN)] = Map.TILE_FOG_OBSTACLE
+        
+        if debug:
+            print("Testing AFTER---")
+            print(owned_tiles.astype('int8'))
+            print(tiles.astype('int8'))
+            print(armies.astype('int16'))
+            print("----------------------", player)
+        
+        """for i in range(self.gmap.size()):
             if not self.gmap.has_view_of(player, i):
                 armies[i] = 0
                 tiles[i] = Map.TILE_FOG
-        
-        return tiles, armies, cities, generals
+        """
+        return tiles.flatten(), armies.flatten(), cities, generals
     
     def winner(self):
         if self.alive_players == 1:
