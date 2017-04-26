@@ -8,7 +8,7 @@ Currently employs behavioural cloning along with data augmentation that build on
 The framework for environment interaction through server sockets is forked from the TNT generals bot. The underlying structures used for TNT is Toshima's base generals web client.
 
 ## Replays Of The Bot In Action
-[21/04/2017 Version - Behavioural Cloning Only] (http://bot.generals.io/replays/Sx01pGdAe)
+[21/04/2017 Version - Behavioural Cloning Only](http://bot.generals.io/replays/Sx01pGdAe)
 
 ## Install Requirements
 `pip install -r requirements.txt`
@@ -23,5 +23,5 @@ The framework for environment interaction through server sockets is forked from 
 ## Credits
 [Toshima's Generals.io Client](https://github.com/toshima/generalsio)
 
-[Tim-Hub's TNT Bot] (https://github.com/tim-hub/generals.io-python-bot-TNT)
+[Tim-Hub's TNT Bot](https://github.com/tim-hub/generals.io-python-bot-TNT)
 
