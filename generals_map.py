@@ -19,23 +19,36 @@ class Map:
 
     def index_for(self, row, col):
         return row * self.width + col
-
+    
+    def in_bounds(self, index):
+        return 0 <= index < self.size()
+    
+    def has_view_of(self, player, tile):
+        tile_y = tile // self.width
+        tile_x = tile % self.width
+        
+        for x_diff in [-1, 0, 1]:
+            for y_diff in [-1, 0, 1]:
+                ind = self.index_for(tile_y + y_diff, tile_x + x_diff)
+                if self.is_valid_tile(ind) and self.tile_at(ind) == player:
+                    return True
+        
+        return False
+        
     def is_adjacent(self, ind1, ind2):
-        r1 = ind1 / self.width
-        c1 = ind1 % self.width
-        r2 = ind2 / self.width
-        c2 = ind2 % self.width
-
-        return abs(r1 - r2) + abs(c1 - c2) == 1
+        return self.distance(ind1, ind2) == 1
 
     def is_valid_tile(self, ind):
         return ind >= 0 and ind < len(self._map)
+    
+    def is_owned(self, ind):
+        return self.tile_at(ind) >= 0
     
     def tile_at(self, ind):
         return self._map[ind]
 
     def army_at(self, ind):
-        return self._army[ind]
+        return self._armies[ind]
 
     def set_tile(self, ind, val):
         self._map[ind] = val
@@ -48,15 +61,19 @@ class Map:
 
     def attack(self, start, end, is50, generals):
         if not self.is_valid_tile(start):
+            print("c")
             return False
         
         if not self.is_valid_tile(end):
+            print("e")
             return False
 
         if not self.is_adjacent(start, end):
+            print("g")
             return False
 
-        if self.tile_at(end) == TILE_MOUNTAIN:
+        if self.tile_at(end) == Map.TILE_MOUNTAIN:
+            print("ff")
             return False
         
         reserve = int(np.ceil(self._armies[start] / 2)) if is50 else 1
@@ -79,8 +96,8 @@ class Map:
                     self._armies[end] -= self._armies[start] - reserve
                 else:
                     # Takeover
-                    self._armies[end] = self._armies[start] - reverse - self._armies[end]
-                    self.set_tile(end, self.tile_at[start])
+                    self._armies[end] = self._armies[start] - reserve - self._armies[end]
+                    self.set_tile(end, self.tile_at(start))
 
         # Attacking an ally
         else:
@@ -90,7 +107,7 @@ class Map:
             if not np.where(generals == end)[0]:
                 self.set_tile(end, self.tile_at(start))
 
-        self._armies[start] = reserver
+        self._armies[start] = reserve
 
         return True
 
@@ -101,9 +118,9 @@ class Map:
                 self._armies[i] *= scale
 
     def distance(self, ind1, ind2):
-        r1 = ind1 / self.width
+        r1 = ind1 // self.width
         c1 = ind1 % self.width
-        r2 = ind2 / self.width
+        r2 = ind2 // self.width
         c2 = ind2 % self.width
 
         return abs(r1 - r2) + abs(c1 - c2)

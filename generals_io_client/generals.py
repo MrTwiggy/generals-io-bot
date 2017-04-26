@@ -42,6 +42,8 @@ class Generals(object):
             self._send(["join_private", gameid, userid])
 
         elif mode == "1v1":
+            print("SENNDDIIIING")
+            self._send(["replay_list", userid])
             self._send(["join_1v1", userid])
 
         elif mode == "team":
