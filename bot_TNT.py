@@ -50,21 +50,26 @@ def update_state(map_state, tiles, armies, cities, generals_list, player, enemy)
     x_offset = x_padding[0]
     
     
-    # Set state tiles with fog
+    # Set state tiles with fog --- FOG FEATURE
     map_state[:,:,7] = (np.logical_or(tiles == FOG, tiles == OBSTACLE)).astype('int32')
     visible_tiles = map_state[:, :, 7] != 1
     
-    # Sets whether a tile has ever been discovered
-    map_state[:, :, 8] = np.logical_or(map_state[:, :, 8] == 1, map_state[:, :, 7] != 1)
+    # Sets whether a tile has ever been discovered --- DISCOVERED FEATURE
+    map_state[:, :, 8] = np.logical_or(map_state[:, :, 8] == 1, map_state[:, :, 7] != 1).astype('int32')
+    undiscovered_tiles = map_state[:, :, 8] != 1
     
-    # Update number of turns in fog
+    # Update number of turns in fog ---- TURNS IN FOG FEATURE
     map_state[:,:,9] += 1
     map_state[visible_tiles, 9] = 0
     
-    
-    # Set tile ownerships
+    # Set tile ownerships ----- OWNED BY AGENT FEATURE
     map_state[visible_tiles, 0] = tiles[visible_tiles] == player                            # Owned by us
+    
+    # ----- OWNED BY NEUTRAL FEATURE
     map_state[visible_tiles, 1] = tiles[visible_tiles] < 0 # Neutral
+    map_state[undiscovered_tiles, 1] = 1 # Assume that all undiscovered tiles are neutral until discovered
+    
+    # ----- OWNED BY ENEMY FEATURE
     map_state[visible_tiles, 2] = tiles[visible_tiles] == enemy                          # Owned by enemy
     
     # Set tile types
@@ -72,16 +77,18 @@ def update_state(map_state, tiles, armies, cities, generals_list, player, enemy)
     map_state[:,:,3] = np.logical_or(map_state[:,:,3], tiles == FOG)
     map_state[:, :, 4] = np.logical_or(tiles == MOUNTAIN, tiles == OBSTACLE)# Set mountains
     
+    # ---- CITY TILE FEATURE
     for y, x in cities:
         map_state[y+y_offset, x+x_offset, 5] = 1              # Set cities
     
+    # ---- GENERAL TILE FEATURE
     for y, x in generals_list:
         if y != -1 and x != -1:
             map_state[y+y_offset, x+x_offset, 6] = 1
     
     #map_state[tiles != FOG, 9] = 0
     
-    # Set army unit counts
+    # Set army unit counts ---- ARMY TILE COUNT FEATURE
     map_state[visible_tiles, 10] = armies[visible_tiles]
     map_state = map_state.astype('float32')
     return map_state

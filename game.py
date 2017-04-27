@@ -68,61 +68,29 @@ class Game:
         cities = []
         generals = []
         
+        # Add generals that can be seen by the player
         for general in self.generals:
             if self.gmap.has_view_of(player, general):
                 generals.append(self.index_to_coordinates(general))
         
+        # Add cities that can be seen by the player
         for city in self.cities:
             if self.gmap.has_view_of(player, city):
                 cities.append(self.index_to_coordinates(city))
-                
-        owned_tiles = (np.copy(tiles) == player).astype('int8')
-        """for x in [-1, 0, 1]:
-            for y in [-1, 0, 1]:
-                if x == 0 and y == 0: continue
-                temp = np.roll(np.copy(owned_tiles), shift=y, axis=0)
-                temp = np.roll(temp, shift=x, axis=1)
-                
-                if x == -1:
-                    temp[:,-1] = 0
-                elif x == 1:
-                    temp[:,0] = 0
-                
-                if y == -1:
-                    temp[-1,:] = 0
-                elif y == 1:
-                    temp[0, :] = 0
-                
-                owned_tiles += temp
-        owned_tiles = owned_tiles > 0"""
-        before = np.copy(owned_tiles)
-        owned_tiles = ndimage.binary_dilation(owned_tiles, structure=Game.DILATION_STRUCTURE)
-        debug = np.random.binomial(1, 0)#0.0005)
         
-        if debug:
-            print("Testing---")
-            print(owned_tiles.astype('int8'))
-            print(before)
-            print(tiles.astype('int8'))
-            print(armies.astype('int16'))
-            print("----------------------", player)
-        armies *= owned_tiles
+        # Calculate a masking of visible territory on the map
+        visible_tiles = (np.copy(tiles) == player).astype('int8')
+        visible_tiles = ndimage.binary_dilation(visible_tiles, structure=Game.DILATION_STRUCTURE)
         
-        tiles[np.logical_and(owned_tiles == 0, tiles != Map.TILE_MOUNTAIN)] = Map.TILE_FOG
-        tiles[np.logical_and(owned_tiles == 0, tiles == Map.TILE_MOUNTAIN)] = Map.TILE_FOG_OBSTACLE
+        # Reduce all unseen tiles' army counts to zero to prevent impossible information.
+        armies *= visible_tiles
         
-        if debug:
-            print("Testing AFTER---")
-            print(owned_tiles.astype('int8'))
-            print(tiles.astype('int8'))
-            print(armies.astype('int16'))
-            print("----------------------", player)
+        # Set the fog of war tiles so that no unfair information is given to the player
+        tiles[np.logical_and(visible_tiles == 0, tiles != Map.TILE_MOUNTAIN)] = Map.TILE_FOG
+        tiles[np.logical_and(visible_tiles == 0, tiles == Map.TILE_MOUNTAIN)] = Map.TILE_FOG_OBSTACLE
         
-        """for i in range(self.gmap.size()):
-            if not self.gmap.has_view_of(player, i):
-                armies[i] = 0
-                tiles[i] = Map.TILE_FOG
-        """
+        # TODO: Make it so that cities in the fog are also OBSTACLE and not just FOG?
+
         return tiles.flatten(), armies.flatten(), cities, generals
     
     def winner(self):

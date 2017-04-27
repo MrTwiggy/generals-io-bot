@@ -29,30 +29,11 @@ from keras.callbacks import EarlyStopping,ModelCheckpoint,TensorBoard
 from random import randint
 from game import MAX_MAP_WIDTH, ORIGINAL_MAP_WIDTH
 
-from LoadReplayData import load_all_replays, generate_target_tensors
+from LoadReplayData import load_all_replays, generate_target_tensors, sample_dataset, get_dataset_info
 
 from sklearn.utils import shuffle
 
 import tensorflow as tf
-
-#from fetch_player_data import download_player_replays
-
-#download_player_replays(3146, "./replays/forest", 6000)
-
-# python ./train_imitation.py
-if __name__ == "__main__":
-    arg_count = len(sys.argv) - 1
-    
-    REPLAY_FOLDER = sys.argv[1] if arg_count >= 1 else "./replays"
-    THREAD_COUNT = int(sys.argv[2]) if arg_count >= 2 else 8
-    MODEL_NAME = sys.argv[3] if arg_count >= 3 else "default-model"
-    MAX_GAMES_TO_LOAD = int(sys.argv[4]) if arg_count >= 4 else 100
-training_input = []
-training_target = []
-
-DATA_FOLDER = "./data"
-BATCH_SIZE = 64
-
 
 def multi_label_accuracy(y_true, y_pred):
     batch_size = K.shape(y_true)[0]
@@ -120,14 +101,13 @@ def multi_label_crossentropy(y_true, y_pred):
     #crossentropy = tf.Print(crossentropy, [y_true, y_pred, crossentropy], message="Testing: ", summarize=5)
     return crossentropy
 
-#batch_X shape: (batch_size, map_height, map_width, 11)
-#batch_y shape is tuple ((y,x), direction)
 
 def generate_paddings(height, width):
     diff_x = float(ORIGINAL_MAP_WIDTH - width) / 2.0
     diff_y = float(ORIGINAL_MAP_WIDTH - height) / 2.0
     
-    return (math.ceil(diff_y), math.floor(diff_y)), (math.ceil(diff_x), math.floor(diff_x)),
+    return (math.ceil(diff_y), math.floor(diff_y)), (math.ceil(diff_x), math.floor(diff_x))
+
 def augment_batch(batch_X, batch_y, batch_size):
     for i in range(batch_size):
         rotation = randint(0, 3)
@@ -171,11 +151,7 @@ def augment_batch(batch_X, batch_y, batch_size):
         
         end_y, end_x = np.unravel_index(np.argmax(example_tile.flatten()), example_tile.shape)
         end_direction = np.argmax(final_direction[end_y, end_x])
-        end_tile = batch_X[i][end_y, end_x]
-        #print("Tiles ", end_tile, " vs ", start_tile)
-        #print("Start: ", start_y, start_x, " VS End: ", end_y, end_x, " with shapes ", example_tile.shape, final_direction.shape, start_direction, end_direction)
-        
-                        
+        end_tile = batch_X[i][end_y, end_x]          
         
     
     batch_X = np.concatenate(np.array([batch_X]), axis=0)
@@ -197,77 +173,62 @@ def augment_batch(batch_X, batch_y, batch_size):
 # training_target_orig is of shape (num_samples, 1),
 # each row in target is a tuple of ((y,x), direction) where
 # x,y are the positions of the moving tile and direction is an int in [0,3] denoting the direction moved
-def frame_generator(training_input_orig, training_target_orig, batch_size, augment=False):
+def frame_generator(file_name, dataset_name, batch_size, augment=False):
     while True:
-        #print("----------SHUFFLING FRAMES!")
-        training_input, training_target = shuffle(training_input_orig, training_target_orig)
-        batches = math.ceil(float(len(training_input)) / batch_size)
+        input_shape, target_shape = get_dataset_info(file_name, dataset_name)
+        sample_count = input_shape[0]
+        batches = math.ceil(float(sample_count) / batch_size)
+        print("Beginning frame generation loop with {} samples available for {} total batches!".format(sample_count, batches))
         
-        for batch_index in range(batches):
-            start = batch_index*batch_size
-            end = min(len(training_input), start + batch_size)
-            batch_size = end - start
+        indices = np.arange(sample_count)
+        np.random.shuffle(indices)
+        
+        batch_index_sets = np.split(indices, [batch_size*i for i in range(1, batches)])
+        for batch_indices in batch_index_sets:
+            # Load and sample the data off disk from dataset h5 file
+            current_batch_size = len(batch_indices)
+            batch_X, batch_y = sample_dataset(file_name, dataset_name, current_batch_size, batch_indices)
             
-            batch_X, batch_y = np.copy(training_input[start:end]), np.copy(training_target[start:end])
             
-            #batch_y = batch_y[:, :529]
+            # Construct the target tensors
             tile_target = []
             move_direction_target = []
-            
-            for i in range(batch_size):
+            for i in range(current_batch_size):
                 y, x, direction, height, width = batch_y[i]
-                #print(i, y, x, direction, height, width)
                 tile_pos, move_direction = generate_target_tensors(x, y, direction)
                 tile_target.append(tile_pos.flatten())
                 move_direction_target.append(move_direction.flatten())
             
             tile_target = np.array(tile_target).astype('float32')
             move_direction_target = np.array(move_direction_target).astype('float32')
-            
-            tile_len = tile_target.shape[1]
-            move_len = move_direction_target.shape[1]
-            
             batch_y = np.concatenate((tile_target, move_direction_target), axis=1)
-            #print("------- batch shape ", batch_y.shape)
             
+            # Perform random data augmentation on frames independantly
             if augment:
-                batch_X, batch_y = augment_batch(batch_X, batch_y, batch_size)
-                #batch_X, batch_y = augment_batch(batch_X, batch_y, batch_size)
+                batch_X, batch_y = augment_batch(batch_X, batch_y, current_batch_size)
             
-            
-                
-            
+            # Yield the augmentated and formatted example batch that was loaded off disk
+            tile_len = tile_target.shape[1]
             yield batch_X, [batch_y[:, :tile_len], batch_y[:, tile_len:]]
 
 def build_model():
     #---- Shared convolution network 
     main_input = Input(shape=(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, 11,), dtype='float32', name='main_input')
-    """cnn = Convolution2D(128, 3, 3, border_mode="same",activation = 'relu')(main_input)
+    cnn = Convolution2D(196, 3, 3, border_mode="same",activation = 'relu')(main_input)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    #cnn = Convolution2D(128, 3, 3, border_mode="valid", activation = 'relu')(cnn)
-    #cnn = BatchNormalization()(cnn)
-    """
-    cnn = Convolution2D(96, 7, 7, border_mode="same",activation = 'relu')(main_input)
-    cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(64, 5, 5, border_mode="same", activation = 'relu')(cnn)
-    cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(32, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
     
     #---- Tile position network
-    #tile_position = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
-    #tile_position = BatchNormalization()(tile_position)
     tile_position = Convolution2D(1, 5, 5, border_mode="same", activation='relu')(cnn)
     tile_position = Flatten()(tile_position)
     tile_position = Activation('softmax', name='tile_position')(tile_position)  
     
     #------ Move direction network
-    #move_direction = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
-    #move_direction = BatchNormalization()(move_direction)
     move_direction = Convolution2D(4, 5, 5, border_mode="same", activation='relu')(cnn)
     move_direction = Reshape((ORIGINAL_MAP_WIDTH*ORIGINAL_MAP_WIDTH, 4))(move_direction)
     move_direction = Lambda(lambda x: tf.nn.softmax(x))(move_direction)
@@ -278,33 +239,31 @@ def build_model():
     
     #---- Final built model
     model = Model(input=main_input, output=[tile_position, move_direction])#, is50])
-    model.compile('rmsprop', loss={'tile_position': 'categorical_crossentropy', 'move_direction': multi_label_crossentropy},
-                  metrics={'move_direction': multi_label_accuracy, 'tile_position':'accuracy'},loss_weights={'tile_position': 1, 'move_direction' : 2.0})
+    model_loss = {'tile_position': 'categorical_crossentropy', 'move_direction': multi_label_crossentropy}
+    model_metrics = {'move_direction': multi_label_accuracy, 'tile_position':'accuracy'}
+    model_weighting = {'tile_position': 1, 'move_direction' : 2.0}
+    model.compile('rmsprop', loss=model_loss, metrics=model_metrics, loss_weights=model_weighting)
     
     return model
 
 def load_model_train(dataFolder, modelName):
-    """tile_model = build_tile_model()
-    tile_model.load_weights('{}_tile/{}.h5'.format(dataFolder, modelName))
-    direction_model = build_direction_model()
-    direction_model.load_weights('{}_direction/{}.h5'.format(dataFolder, modelName))
-    return tile_model, direction_model"""
     model = build_model()
     model.load_weights('{}/{}.h5'.format(dataFolder, modelName))
     return model
 
-def shape_and_pad(training_in):
-    a = training_in.reshape(-1, ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, 1)
-    print(a.shape)
-    a = np.pad(a, ((0,0), (4, 4), (4, 4), (0,0)), mode='constant', constant_values=0)
-    return a
-
 # --------------------- Main Training Logic -----------------------
 if __name__ == "__main__":
-    print("----STARTING TRAININGv2------")
-    np.random.seed(1337) # for reproducibility
+    arg_count = len(sys.argv) - 1
     
-    training_input, training_target, validation_input, validation_target = load_all_replays(REPLAY_FOLDER, MAX_GAMES_TO_LOAD, THREAD_COUNT)
+    REPLAY_FOLDER = sys.argv[1] if arg_count >= 1 else "./replays"
+    THREAD_COUNT = int(sys.argv[2]) if arg_count >= 2 else 4
+    MODEL_NAME = sys.argv[3] if arg_count >= 3 else "default-model"
+    DATA_FILE_NAME = sys.argv[4] if arg_count >= 4 else "default-data"
+    BATCH_SIZE = 64
+    DATA_FOLDER = "./data"
+    
+    print("----STARTING TRAINING------")
+    np.random.seed(1337) # for reproducibility  
     model = build_model()
     
     for epoch in range(1,30):
@@ -315,49 +274,20 @@ if __name__ == "__main__":
         now = datetime.datetime.now()
         tensorboard = TensorBoard(log_dir='./logs/'+now.strftime('%Y.%m.%d %H.%M'))
         
-        print("Training shapes: ", training_target.shape, training_input.shape)
-        print("Validation shapes: ", validation_target.shape, validation_input.shape)
-        tile_train_target = training_target[:, :ORIGINAL_MAP_WIDTH**2]
-        tile_validation_target = validation_target[:, :ORIGINAL_MAP_WIDTH**2]
+        training_input_shape, training_target_shape = get_dataset_info(DATA_FILE_NAME, "training")
+        validation_input_shape, validation_target_shape = get_dataset_info(DATA_FILE_NAME, "validation")
+        print("Training shapes: ", training_target_shape, training_input_shape)
+        print("Validation shapes: ", validation_target_shape, validation_input_shape)
         
         model.fit_generator(
-            frame_generator(training_input, training_target, BATCH_SIZE, augment=True),
-            validation_data=frame_generator(validation_input, validation_target, BATCH_SIZE, augment=False),
-            samples_per_epoch=len(training_input),
-            nb_val_samples=len(validation_input),
+            frame_generator("datafile_name", "training", BATCH_SIZE, augment=True),
+            validation_data=frame_generator("datafile_name", "validation", BATCH_SIZE, augment=False),
+            samples_per_epoch=training_input_shape[0],
+            nb_val_samples=validation_input_shape[0],
             nb_epoch=10,
             verbose=1,
             callbacks=[EarlyStopping(patience=8), tensorboard,
                        ModelCheckpoint(checkpoint_name,verbose=1,save_best_only=True)])
-        # --- Train the move direction model
-        """shaped_tile_train = shape_and_pad(tile_train_target)
-        shaped_tile_validation = shape_and_pad(tile_validation_target)
-        print(shaped_tile_train.shape)
-        direction_train_input = np.concatenate((training_input, shaped_tile_train), axis=3)
-        direction_validation_input = np.concatenate((validation_input, shaped_tile_validation), axis=3)
-        direction_train_target = training_target[:, 529:]
-        direction_validation_target = validation_target[:, 529:]
-        direction_model.fit_generator(
-            frame_generator(direction_train_input, direction_train_target, BATCH_SIZE, augment=False),
-            validation_data=frame_generator(direction_validation_input, direction_validation_target, BATCH_SIZE, augment=False),
-            samples_per_epoch=len(training_input),
-            nb_val_samples=len(validation_input),
-            nb_epoch=10,
-            verbose=1,
-            callbacks=[EarlyStopping(patience=8), tensorboard,
-                       ModelCheckpoint(checkpoint_name,verbose=1,save_best_only=True)])
-        
-        # --- Train the tile position model
-        
-        tile_model.fit_generator(
-            frame_generator(training_input, tile_train_target, BATCH_SIZE),
-            validation_data=frame_generator(validation_input, tile_validation_target, BATCH_SIZE, augment=False),
-            samples_per_epoch=len(training_input),
-            nb_val_samples=len(validation_input),
-            nb_epoch=10,
-            verbose=1,
-            callbacks=[EarlyStopping(patience=8), tensorboard,
-                       ModelCheckpoint(checkpoint_name,verbose=1,save_best_only=True)])"""
         
         
         
