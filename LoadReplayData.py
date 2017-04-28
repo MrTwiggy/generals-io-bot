@@ -29,7 +29,7 @@ import multiprocessing
 MATCH_ID_REQUEST = 'http://halite.io/api/web/game?userID={}&limit={}'
 REPLAY_REQUEST = 'https://s3.amazonaws.com/halitereplaybucket/{}'
 
-MIN_REPLAY_STARS = 100
+MIN_REPLAY_STARS = 90
 test = 0
 
 
@@ -114,7 +114,12 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
             if max(replay['stars']) < MIN_REPLAY_STARS:
                 print("Skipping game because stars are too low...")
                 continue
-                    
+            
+            # Skip games with a player that quits
+            if len(afks) > 0:
+                print("Skipping game with AFK player in...")
+                continue
+            
             # Initialize a Game object with starting state and players
             game = generals_game.Game.from_replay(replay)
             game_states = [generate_blank_state(), generate_blank_state()]
@@ -125,7 +130,8 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
             move_index = 0
             print("Beginning simulation...")
             while not game.is_over():
-                
+                if move_index >= moves_count:
+                    break
                 # Generate the current game state from the perspective of player with target_id index
                 target_moves = [None, None]
                 map_states = [game.generate_state(0), game.generate_state(1)]
