@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Grab all files in the current working directory
-FILES=$PWD/*
+# Grab all files in the specified directory
+FILES=$1/*
 
 # Convert each file from its .gior format to .gioreplay format.
 for f in $FILES

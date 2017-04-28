@@ -250,6 +250,8 @@ if __name__ == "__main__":
         x_dest = int(x_dest)
         y_dest = int(y_dest)
         print("Submitting move {} from ({}, {}) to ({}, {}), computed in {} seconds".format(move, y, x, y_dest, x_dest, time.time() - start_time))
+        if turn <= 20:
+            continue
         general.move(y, x, y_dest, x_dest)
         # TODO: Feed the above state into neural network, get output move, and then
         # submit move using generals.move(y_origin, x_origin, y_destination, x_destination) and then repeat

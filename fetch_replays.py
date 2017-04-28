@@ -18,8 +18,8 @@ import shutil
 
 # Example usage: python fetch_replays.py ./replays/MrTwiggy 4 MrTwiggy 5000
 
-REPLAY_REQUEST = 'http://bot.generals.io/{}.gior'
-REPLAYS_BY_USERNAME = 'http://bot.generals.io/api/replaysForUsername?u={}&offset=0&count={}'
+REPLAY_REQUEST = 'http://generals.io/{}.gior'
+REPLAYS_BY_USERNAME = 'http://generals.io/api/replaysForUsername?u={}&offset=0&count={}'
 
 arg_count = len(sys.argv) - 1
 REPLAY_FOLDER = sys.argv[1] if arg_count >= 1 else "./replays"

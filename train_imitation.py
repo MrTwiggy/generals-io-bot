@@ -184,10 +184,12 @@ def frame_generator(file_name, dataset_name, batch_size, augment=False):
         np.random.shuffle(indices)
         
         batch_index_sets = np.split(indices, [batch_size*i for i in range(1, batches)])
+        print("Batch index sets: ", len(batch_index_sets))
         for batch_indices in batch_index_sets:
             # Load and sample the data off disk from dataset h5 file
             current_batch_size = len(batch_indices)
-            batch_X, batch_y = sample_dataset(file_name, dataset_name, current_batch_size, batch_indices)
+            #print(sorted(batch_indices))
+            batch_X, batch_y = sample_dataset(file_name, dataset_name, current_batch_size, sorted(batch_indices))
             
             
             # Construct the target tensors
@@ -248,19 +250,17 @@ def build_model():
 
 def load_model_train(dataFolder, modelName):
     model_path = '{}/{}.h5'.format(dataFolder, modelName)
-    #model = build_model()
-    #model.load_weights(model_path)
-    model = keras.models.load_model(model_path)
+    model = build_model()
+    model.load_weights(model_path)
+    #model = keras.models.load_model(model_path)
     return model
 
 # --------------------- Main Training Logic -----------------------
 if __name__ == "__main__":
     arg_count = len(sys.argv) - 1
     
-    REPLAY_FOLDER = sys.argv[1] if arg_count >= 1 else "./replays"
-    THREAD_COUNT = int(sys.argv[2]) if arg_count >= 2 else 4
-    MODEL_NAME = sys.argv[3] if arg_count >= 3 else "default-model"
-    DATA_FILE_NAME = sys.argv[4] if arg_count >= 4 else "default-data"
+    MODEL_NAME = sys.argv[1] if arg_count >= 1 else "default-model"
+    DATA_FILE_NAME = sys.argv[2] if arg_count >= 2 else "default-data"
     BATCH_SIZE = 64
     DATA_FOLDER = "./data"
     
@@ -282,8 +282,8 @@ if __name__ == "__main__":
         print("Validation shapes: ", validation_target_shape, validation_input_shape)
         
         model.fit_generator(
-            frame_generator("datafile_name", "training", BATCH_SIZE, augment=True),
-            validation_data=frame_generator("datafile_name", "validation", BATCH_SIZE, augment=False),
+            frame_generator(DATA_FILE_NAME, "training", BATCH_SIZE, augment=True),
+            validation_data=frame_generator(DATA_FILE_NAME, "validation", BATCH_SIZE, augment=False),
             samples_per_epoch=training_input_shape[0],
             nb_val_samples=validation_input_shape[0],
             nb_epoch=10,

@@ -29,6 +29,7 @@ import multiprocessing
 MATCH_ID_REQUEST = 'http://halite.io/api/web/game?userID={}&limit={}'
 REPLAY_REQUEST = 'https://s3.amazonaws.com/halitereplaybucket/{}'
 
+MIN_REPLAY_STARS = 100
 test = 0
 
 
@@ -106,10 +107,12 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
             
             # Skip games that are not 1v1
             if player_count > 2:
+                print("Skipping non-1v1 game...")
                 continue
             
             # Skip games that does not only contain players with a certain ranking
-            if min(replay['stars']) < 90:
+            if min(replay['stars']) < MIN_REPLAY_STARS:
+                print("Skipping game because stars are too low...")
                 continue
                     
             # Initialize a Game object with starting state and players
@@ -182,6 +185,8 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
             
             # Add the sample states and targets to the thread-safe queue
             for player_id in [0, 1]:
+                if (replay['stars'][player_id] < MIN_REPLAY_STARS):
+                    continue
                 target_length = len(replay_targets[player_id][0])
                 replay_inputs[player_id] = np.concatenate(replay_inputs[player_id],axis=0).reshape(-1, ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, MAP_CHANNELS).astype(np.float32)
                 replay_targets[player_id] = np.concatenate(replay_targets[player_id],axis=0).reshape(-1, target_length).astype(np.float32)
@@ -199,8 +204,6 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
             print("----------------------ERROR DURING LOAD! Skipping...")
             pass
     print("Thread {} is finished loading!".format(threadId))
-    import operator
-    print(sorted(player_tracker.items(), key=operator.itemgetter(1)))
     return 0
 
 def fetch_replay_names(replayFolder, gamesToFetch, required_players=None):
@@ -225,10 +228,10 @@ def fetch_replay_names(replayFolder, gamesToFetch, required_players=None):
 
 # Example usage: Sample 64 frames randomly from the training dataset of the FlobotFrames.h5 file
 # X, y = sample_dataset("FlobotFrames", "training", 64)
-def sample_dataset(file_name, dataset_name="training", sample_size = 64, sample_indices=None data_folder='./data'):
+def sample_dataset(file_name, dataset_name="training", sample_size = 64, sample_indices=None, data_folder='./data'):
     file_name = '{}/{}.h5'.format(data_folder, file_name)
     
-    with h5py.File(file_name, 'r') as h5f:
+    with h5py.File(file_name, 'a') as h5f:
         X_data = h5f["{}_input".format(dataset_name)]
         y_data = h5f["{}_target".format(dataset_name)]        
         
@@ -241,46 +244,59 @@ def sample_dataset(file_name, dataset_name="training", sample_size = 64, sample_
     
     return np.copy(X), np.copy(y)
 
+def _dataset_exists(file_path, dataset_name, data_folder='./data'):
+    if not os.path.isfile(file_path):
+        return False
+    
+    with h5py.File(file_path, 'a') as h5f:
+        exists = (dataset_name in h5f)
+    
+    return exists
 # Example: Add some newly collected training input and target frames to dataset
 # add_to_dataset("FlobotFrames", "training", input_samples, target_samples)
 def add_to_dataset(file_name, dataset_name, X, y, data_folder='./data'):
     file_path = '{}/{}.h5'.format(data_folder, file_name)
+    #print("Adding to file path ", file_path, " with dataset name", dataset_name)
     
-    if not os.path.isfile(file_path):
-        _initialize_dataset(file_path, "{}_input".format(dataset_name), X, data_folder)
+    if not _dataset_exists(file_path, "{}_input".format(dataset_name), data_folder):
         _initialize_dataset(file_path, "{}_target".format(dataset_name), y, data_folder)
+        _initialize_dataset(file_path, "{}_input".format(dataset_name), X, data_folder)
     else:
         _add_samples_to_dataset(file_path, "{}_input".format(dataset_name), X, data_folder)
         _add_samples_to_dataset(file_path, "{}_target".format(dataset_name), y, data_folder)
 
 def get_dataset_info(file_name, dataset_name, data_folder='./data'):
-    file_name = '{}/{}.h5'.format(data_folder, file_name)
-    with h5py.File(file_name, 'r') as h5f:
+    file_path = '{}/{}.h5'.format(data_folder, file_name)
+    with h5py.File(file_path, 'a') as h5f:
+        #print("Fetching info for ", file_name, " ", file_path, dataset_name)
         X_shape = h5f["{}_input".format(dataset_name)].shape
         y_shape = h5f["{}_target".format(dataset_name)].shape
     
     return X_shape, y_shape
 
 def _initialize_dataset(file_path, dataset_name, data, data_folder='./data'):
-    with h5py.File(file_path, 'w') as h5f:
-        max_dataset_shape = data.shape
+    with h5py.File(file_path, 'a') as h5f:
+        max_dataset_shape = list(data.shape)
         max_dataset_shape[0] = None
-        h5f.create_dataset(dataset_name, data.shape, maxshape=max_dataset_shape)
-        h5f[dataset_name] = data
+        max_dataset_shape = tuple(max_dataset_shape)
+        dataset = h5f.create_dataset(dataset_name, data.shape, maxshape=max_dataset_shape)
+        dataset[:] = np.copy(data)
+        #print("initializing! ", max_dataset_shape, data.shape, dataset_name, h5f[dataset_name].shape)
 
 def _add_samples_to_dataset(file_path, dataset_name, data, data_folder='./data'):
-    with h5py.File(file_path, 'w') as h5f:
+    with h5py.File(file_path, 'a') as h5f:
         dataset = h5f[dataset_name]
         n = dataset.shape[0]
         new_n = n + data.shape[0]
         dataset.resize(new_n, axis=0)
         dataset[n:] = data
+        #print("Old n ", n, " versus new n", new_n)
 
 def load_all_replays(file_name, replayFolder, gamesToLoad, threadCount=8):   
     manager = multiprocessing.Manager()
     THREADCOUNT = threadCount
     replaySubsets = [[] for thread in range(THREADCOUNT)]
-    replayNames = fetch_replay_names(replayFolder, gamesToLoad)
+    replayNames = fetch_replay_names(replayFolder, gamesToLoad, 2)
     replay_count = len(replayNames)
     for index, replay_name in enumerate(replayNames):
         replaySubsets[index % THREADCOUNT].append((index, replay_name))
