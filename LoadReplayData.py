@@ -168,7 +168,7 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
             print("Ending simulation with winner {} after {} turns...".format(game.winner(), game.turn))
             game_winner = game.winner()
             
-            print("Sampled ", (len(replay_inputs[0]) + len(replay_inputs[1]))
+            print("Sampled ", (len(replay_inputs[0]) + len(replay_inputs[1])))
             # replay_input should be shape (N, 22, 22, 11) for N sampled states
             # replay_target should be shape (N, ((22, 22), (5), (1)))
             # Each sampled N state has a target, which is a:
