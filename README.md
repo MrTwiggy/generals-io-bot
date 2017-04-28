@@ -18,7 +18,7 @@ To install all requirements, run the command `pip install -r requirements.txt`
 
 ## Configure & Run Agent
 - Set the `USER_ID, USER_NAME` in **config.py** for your bot account.
-- Run command 'sh runBot.sh [BotType] [ModelName]'
+- Run command `sh runBot.sh [BotType] [ModelName]`
 
 ## Credits
 [Toshima's Generals.io Client](https://github.com/toshima/generalsio) - Provides the underlying socket-level server interactions and move handling with the live game servers.
