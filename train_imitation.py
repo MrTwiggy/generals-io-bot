@@ -224,9 +224,11 @@ def build_model():
     cnn = BatchNormalization()(cnn)
     cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = BatchNormalization()(cnn)
     
     #---- Tile position network
-    tile_position = Convolution2D(1, 5, 5, border_mode="same", activation='relu')(cnn)
+    tile_position = Convolution2D(1, 9, 9, border_mode="same", activation='relu')(cnn)
     tile_position = Flatten()(tile_position)
     tile_position = Activation('softmax', name='tile_position')(tile_position)  
     

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Grab all files in the specified directory
+# Grab all files in the specified directory in command line arguments
 FILES=$1/*
 
 # Convert each file from its .gior format to .gioreplay format.
