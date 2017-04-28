@@ -110,8 +110,8 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                 print("Skipping non-1v1 game...")
                 continue
             
-            # Skip games that does not only contain players with a certain ranking
-            if min(replay['stars']) < MIN_REPLAY_STARS:
+            # Skip games that does not contain at least one player of atleast MIN_REPLAY_STARS
+            if max(replay['stars']) < MIN_REPLAY_STARS:
                 print("Skipping game because stars are too low...")
                 continue
                     
