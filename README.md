@@ -11,17 +11,18 @@ The framework for environment interaction through server sockets is forked from 
 [21/04/2017 Version - Behavioural Cloning Only](http://bot.generals.io/replays/Sx01pGdAe)
 
 ## Install Requirements
-`pip install -r requirements.txt`
+To install all requirements, run the command `pip install -r requirements.txt`
 
 ## Train AlphaGenerals Agent
-- Train model with command `python ./train_imitation.py [ReplayDirection] [ThreadCount] [AgentName] [MaxReplaysToLoad]`
+- Run command `python ./train_imitation.py [ReplayDirectory] [ModelName] [MaxReplaysToLoad]`
 
 ## Configure & Run Agent
-- Set the `USER_ID, USER_NAME, GAME_ID (for custom game)` in **config.py**.
-- Choose the bot to run, for example `python bot_TNT.py`
+- Set the `USER_ID, USER_NAME` in **config.py** for your bot account.
+- Run command 'sh runBot.sh [BotType] [ModelName]'
 
 ## Credits
-[Toshima's Generals.io Client](https://github.com/toshima/generalsio)
+[Toshima's Generals.io Client](https://github.com/toshima/generalsio) - Provides the underlying socket-level server interactions and move handling with the live game servers.
 
-[Tim-Hub's TNT Bot](https://github.com/tim-hub/generals.io-python-bot-TNT)
+[Tim-Hub's TNT Bot](https://github.com/tim-hub/generals.io-python-bot-TNT) - Provided the basic structure for bot interaction with Toshima's client.
 
+[Generals.io Replay Utils](https://github.com/vzhou842/generals.io-Replay-Utils) - Provides ability to convert serialized .gior files into a proper plain-text JSON .gioreplay format.

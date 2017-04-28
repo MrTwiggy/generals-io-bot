@@ -247,8 +247,10 @@ def build_model():
     return model
 
 def load_model_train(dataFolder, modelName):
-    model = build_model()
-    model.load_weights('{}/{}.h5'.format(dataFolder, modelName))
+    model_path = '{}/{}.h5'.format(dataFolder, modelName)
+    #model = build_model()
+    #model.load_weights(model_path)
+    model = keras.models.load_model(model_path)
     return model
 
 # --------------------- Main Training Logic -----------------------
