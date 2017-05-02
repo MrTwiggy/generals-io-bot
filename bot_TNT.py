@@ -5,6 +5,7 @@ import math
 import numpy as np
 from generals_io_client import generals
 from game import MAX_MAP_WIDTH, ORIGINAL_MAP_WIDTH, NUM_DIRECTIONS, NORTH, EAST, SOUTH, WEST
+from train_imitation import augment_state, augment_direction
 import sys
 logging.basicConfig(level=logging.DEBUG)
 
@@ -93,66 +94,71 @@ def update_state(map_state, tiles, armies, cities, generals_list, player, enemy)
     map_state = map_state.astype('float32')
     return map_state
 
-def calculate_action(model, game_state, tiles, armies, our_flag, enemy_flag, model_ver=0):
+def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_flag, model_ver=0):
+    if turn < 25:
+        return None
     start_time = time.time()
     tiles_copy, y_padding, x_padding = pad(np.copy(tiles), MOUNTAIN, ORIGINAL_MAP_WIDTH)
     armies_copy, y_padding, x_padding = pad(np.copy(armies), 0, ORIGINAL_MAP_WIDTH)
-    tile_position, move_direction = model.predict(np.array([game_state]))
-    tile_position = tile_position.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH)
     tile_mask = (np.logical_and(tiles_copy == our_flag, armies_copy > 1)).astype('float32')
-    #print(tile_position.astype('float32'))
-    #print(move_direction)
-    #print(move_direction.argmax())
-    #print(is50)
     
-    if model_ver == 1:
-        tile_position += abs(np.min(tile_position.flatten()))
+    # Feed state into network and predict
+    tile_position = np.zeros((ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH))
+    move_direction = np.zeros((ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, NUM_DIRECTIONS))
+    
+    num_dir = 4 if model_ver == 0 else 1
+    num_flip = 2 if model_ver == 0 else 1
+    for rotation in range(num_dir):
+        for flip_vert in range(num_flip):
+            augmented_state = augment_state(np.copy(game_state), rotation, flip_vert)
+            augmented_position, augmented_direction = model.predict(np.array([augmented_state]))
+            augmented_position = augmented_position.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH)
+            augmented_direction = augmented_direction.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, NUM_DIRECTIONS)
+            
+            proper_position = augment_state(augmented_position, ((4 - rotation) % 4), flip_vert)
+            proper_direction = augment_direction(augmented_direction, ((4 - rotation) % 4), flip_vert)
+            tile_position += proper_position
+            move_direction += proper_direction
+    
+    tile_position /= float(num_dir*num_flip)
+    move_direction /= float(num_dir*num_flip)
+    
+    
     tile_position = tile_position * tile_mask
-    
     tile_position = tile_position[y_padding[0]:ORIGINAL_MAP_WIDTH-y_padding[1], x_padding[0]:ORIGINAL_MAP_WIDTH-x_padding[1]]
-    if np.sum(tile_position) <= 0 and model_ver == 0:
-        print("Skipping turn, no valid moves...")
+    if np.sum(tile_position) <= 0:
+        print("Skipping turn, no valid tile positions...")
         return None
-    
-    if model_ver == 0:
-        tile_position = tile_position / np.sum(tile_position)        
-        tile_count = len(tile_position.flatten())        
+    tile_position = tile_position / np.sum(tile_position)        
+    tile_count = len(tile_position.flatten())        
         
-        #-----TILE ACTION CHOICE------
-        tile_index = np.random.choice(np.arange(tile_count), p=tile_position.flatten())#np.argmax(tile_position.flatten())#
-    
-    if model_ver == 1:
-        tile_index = np.argmax(tile_position.flatten())
-        print(tile_position.flatten())
+    #-----TILE ACTION CHOICE------
+    tile_index = np.random.choice(np.arange(tile_count), p=tile_position.flatten())
+    #tile_index = np.argmax(tile_position.flatten())
     y, x = np.unravel_index(tile_index, tile_position.shape)
-    #print("Best pos: ", y, x)
-    #print("General: ", general_y, general_x)
-    #target_move = move_direction.argmax()
     x = int(x)
     y = int(y)
     
-    move_direction = move_direction.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, NUM_DIRECTIONS)
-    move_direction = move_direction[y_padding[0]:ORIGINAL_MAP_WIDTH-y_padding[1], x_padding[0]:ORIGINAL_MAP_WIDTH-x_padding[1], :]
-    
-    
     #-----MOVE DIRECTION ACTION CHOICE------    
+    move_direction = move_direction[y_padding[0]:ORIGINAL_MAP_WIDTH-y_padding[1], x_padding[0]:ORIGINAL_MAP_WIDTH-x_padding[1], :]
     move_direction = move_direction[y, x]
-    if model_ver == 0:
-        target_move = np.random.choice(np.arange(4), p=move_direction)
-    else:
-        move_direction += abs(np.min(move_direction))
-        if y-1 <0 or game_state[y-1, x, 4] == 1:
-            move_direction[0] = 0
-        if x+1 >= 23 or game_state[y, x+1, 4] == 1:
-            move_direction[1] = 0
-        if y+1 >= 23 or game_state[y+1, x, 4] == 1:
-            move_direction[2] = 0
-        if x-1 <0 or game_state[y, x-1, 4] == 1:
-            move_direction[3] = 0
-        target_move = move_direction.argmax()
-        
-        if np.random.binomial(1, 0.05):
-            target_move = np.random.choice(np.arange(4), p=np.array([0.25, 0.25, 0.25, 0.25]))
+    
+    # Check for mountains or map edges that will physically prevent us from moving there
+    if y-1 <0 or game_state[y-1, x, 4] == 1:
+        move_direction[0] = 0
+    if x+1 >= 23 or game_state[y, x+1, 4] == 1:
+        move_direction[1] = 0
+    if y+1 >= 23 or game_state[y+1, x, 4] == 1:
+        move_direction[2] = 0
+    if x-1 <0 or game_state[y, x-1, 4] == 1:
+        move_direction[3] = 0
+    
+    move_magnitude = np.sum(move_direction)
+    if move_magnitude == 0:
+        print("Skipping turn, no valid move directions...")
+        return None
+    move_direction /= move_magnitude
+    target_move = np.random.choice(np.arange(4), p=move_direction)
     
     #print("Positions: {}".format(tile_position))
     print("Tiles owned: {}/{}  by {}".format(np.sum(tile_mask), np.sum(tiles_copy == our_flag), our_flag))
@@ -237,7 +243,7 @@ if __name__ == "__main__":
         
         copy_state = np.copy(map_state).astype('int16')
         
-        action = calculate_action(model, map_state, tiles, armies, our_flag, enemy_flag)
+        action = calculate_action(model, map_state, turn, tiles, armies, our_flag, enemy_flag)
         
         if action is None:
             print("No valid action this turn...")
@@ -250,8 +256,6 @@ if __name__ == "__main__":
         x_dest = int(x_dest)
         y_dest = int(y_dest)
         print("Submitting move {} from ({}, {}) to ({}, {}), computed in {} seconds".format(move, y, x, y_dest, x_dest, time.time() - start_time))
-        if turn <= 20:
-            continue
         general.move(y, x, y_dest, x_dest)
         # TODO: Feed the above state into neural network, get output move, and then
         # submit move using generals.move(y_origin, x_origin, y_destination, x_destination) and then repeat

@@ -108,50 +108,49 @@ def generate_paddings(height, width):
     
     return (math.ceil(diff_y), math.floor(diff_y)), (math.ceil(diff_x), math.floor(diff_x))
 
+def augment_state(original_state, rotation=0, flip_vert=0):
+    state = np.copy(original_state)
+    
+    state = np.rot90(state, k=rotation, axes=(1,0))
+    if flip_vert:
+        state = np.flipud(state)
+        
+    return state
+
+def augment_direction(original_direction, rotation=0, flip_vert=0):
+    move_direction = np.copy(original_direction)
+    
+    for i in range(rotation):
+        temp = np.copy(move_direction[:, :, 3])
+        for direction in range(1, 4):
+            prev_direction = (direction - 1) % 4
+            move_direction[:, :, direction] = move_direction[:, :, prev_direction]
+        move_direction[:, :, 0] = temp
+    
+    if flip_vert:
+        move_direction = np.flipud(direction)
+        temp = np.copy(move_direction[:, :, 0])
+        move_direction[:, :, 0] = move_direction[:, :, 2]
+        move_direction[:, :, 2] = temp
+    
+    return direction
+
 def augment_batch(batch_X, batch_y, batch_size):
     for i in range(batch_size):
         rotation = randint(0, 3)
         flip_vert = randint(0,1)
-        #y, x, direction, height, width = batch_y[i]
-        #y_padding, x_padding = generate_paddings(height, width)
         
         example_tile = np.copy(batch_y[i, :ORIGINAL_MAP_WIDTH**2]).reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH)
         example_direction = np.copy(batch_y[i, ORIGINAL_MAP_WIDTH**2:]).reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, 4)
-        
-        start_y, start_x = np.unravel_index(np.argmax(example_tile.flatten()), example_tile.shape)
-        start_tile = np.copy(batch_X[i][start_y, start_x])
-        
         direction = np.argmax(example_direction[example_tile == 1])
-        start_direction = direction
         
-        # Rotate the map input by the random amount chosen
-        #print("Batch X Shape: ", batch_X.shape, batch_X[i].shape)
-        batch_X[i] = np.rot90(np.copy(batch_X[i]), k=rotation, axes=(1,0))
-        example_tile = np.rot90(np.copy(example_tile), k=rotation, axes=(1,0))
-        
-        direction = (direction + rotation) % 4
-        
-        # Flip the map vertically if decided
-        if flip_vert:
-            batch_X[i] = np.flipud(np.copy(batch_X[i]))
-            example_tile = np.flipud(np.copy(example_tile))
-            #example_direction = np.flipud(example_direction)
-            
-            if direction == 0:
-                direction = 2
-            elif direction == 2:
-                direction = 0
-        
-        final_direction = np.zeros((ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, 4))
-        final_direction[example_tile == 1, direction] = 1    
+        # Augment the game state and tile target and move direction target
+        batch_X[i] = augment_state(batch_X[i], rotation, flip_vert)
+        example_tile = augment_state(example_tile, rotation, flip_vert)
+        final_direction = augment_direction(example_direction, rotation, flip_vert)
         
         batch_y[i, :ORIGINAL_MAP_WIDTH**2] = example_tile.flatten()
         batch_y[i, ORIGINAL_MAP_WIDTH**2:] = final_direction.flatten()
-        
-        
-        end_y, end_x = np.unravel_index(np.argmax(example_tile.flatten()), example_tile.shape)
-        end_direction = np.argmax(final_direction[end_y, end_x])
-        end_tile = batch_X[i][end_y, end_x]          
         
     
     batch_X = np.concatenate(np.array([batch_X]), axis=0)
@@ -235,7 +234,8 @@ def build_model():
     #------ Move direction network
     move_direction = Convolution2D(4, 5, 5, border_mode="same", activation='relu')(cnn)
     move_direction = Reshape((ORIGINAL_MAP_WIDTH*ORIGINAL_MAP_WIDTH, 4))(move_direction)
-    move_direction = Lambda(lambda x: tf.nn.softmax(x))(move_direction)
+    #move_direction = Lambda(lambda x: tf.nn.softmax(x))(move_direction)
+    move_direction = Activation('softmax')(move_direction)  
     move_direction = Flatten(name='move_direction')(move_direction)    
     
     #----- Is half-move network
@@ -252,9 +252,9 @@ def build_model():
 
 def load_model_train(dataFolder, modelName):
     model_path = '{}/{}.h5'.format(dataFolder, modelName)
-    model = build_model()
-    model.load_weights(model_path)
-    #model = keras.models.load_model(model_path)
+    #model = build_model()
+    #model.load_weights(model_path)
+    model = keras.models.load_model(model_path, custom_objects={'multi_label_crossentropy':multi_label_crossentropy, 'multi_label_accuracy':multi_label_accuracy})
     return model
 
 # --------------------- Main Training Logic -----------------------

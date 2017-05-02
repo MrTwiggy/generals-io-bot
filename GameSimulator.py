@@ -13,7 +13,8 @@ import game as generals_game
 
 from sklearn.model_selection import train_test_split
 from bot_TNT import update_state, calculate_action
-from LoadReplayData import fetch_replay_names, load_replay, generate_blank_state, generate_target, save_data, load_data
+from LoadReplayData import fetch_replay_names, load_replay, generate_blank_state, generate_target
+from train_imitation import load_model_train
 
 if __name__ == "__main__":
     if len(sys.argv) >= 5:
@@ -55,7 +56,7 @@ def simulate_game(game_id, models, replay_name):
             armies = armies.reshape(height, width)
             current_state = np.copy(game_states[i])
             state_copy = np.copy(current_state)
-            action = calculate_action(models[i], current_state, tiles, armies, i, enemy, 0)
+            action = calculate_action(models[i], current_state, game.turn, tiles, armies, i, enemy, 0)
             
             if action is not None:
                 y, x, y_dest, x_dest, y_padding, x_padding = action
@@ -96,8 +97,6 @@ def simulate_game(game_id, models, replay_name):
     return winner, forced_finish, game_inputs, game_targets
 
 if __name__ == "__main__":
-    from train_imitation import load_model_train
-    from train_qlearner import load_model_train_q
     models = [load_model_train("./data", MODEL_NAMES[0]), load_model_train("./data", MODEL_NAMES[1])]
     games = 0
     results = [0, 0]
@@ -121,7 +120,7 @@ if __name__ == "__main__":
         print("Finished new game! Current win results: {} vs {} in match {} vs {}".format(results[0], results[1], MODEL_NAMES[0], MODEL_NAMES[1]))
     print("Finished simulating {} games in {} seconds with {} forced game ends!".format(games, time.time() - start_time, forced_finishes))
     
-    training_input= np.array(training_input)
+    """training_input= np.array(training_input)
     training_target= np.array(training_target)
     print(training_input.shape, training_target.shape)
     training_input, validation_input, training_target, validation_target = train_test_split(training_input, training_target, test_size=0.1, random_state=1337)
@@ -140,5 +139,5 @@ if __name__ == "__main__":
     load_time = time.time()
     training_input, training_target, validation_input, validation_target = load_data(SIMULATION_NAME)
     print("Finished loading with h5py in {} seconds!".format(time.time() - load_time))
-    print(training_input.shape, training_target.shape, validation_input.shape, validation_target.shape)
+    print(training_input.shape, training_target.shape, validation_input.shape, validation_target.shape)"""
     
