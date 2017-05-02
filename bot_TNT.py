@@ -5,7 +5,6 @@ import math
 import numpy as np
 from generals_io_client import generals
 from game import MAX_MAP_WIDTH, ORIGINAL_MAP_WIDTH, NUM_DIRECTIONS, NORTH, EAST, SOUTH, WEST
-from train_imitation import augment_state, augment_direction
 import sys
 logging.basicConfig(level=logging.DEBUG)
 
@@ -18,7 +17,6 @@ def grid_to_index(y,x):
 
 def index_to_grid(index):
     return index/cols, index%cols
-
 
 #GENERAL = 0
 EMPTY = -1
@@ -106,6 +104,7 @@ def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_fla
     tile_position = np.zeros((ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH))
     move_direction = np.zeros((ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, NUM_DIRECTIONS))
     
+    from train_imitation import augment_state, augment_direction
     num_dir = 4 if model_ver == 0 else 1
     num_flip = 2 if model_ver == 0 else 1
     for rotation in range(num_dir):
@@ -140,17 +139,20 @@ def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_fla
     y = int(y)
     
     #-----MOVE DIRECTION ACTION CHOICE------    
+    cropped_state = game_state[y_padding[0]:ORIGINAL_MAP_WIDTH-y_padding[1], x_padding[0]:ORIGINAL_MAP_WIDTH-x_padding[1], :]
+    height = cropped_state.shape[0]
+    width = cropped_state.shape[1]
     move_direction = move_direction[y_padding[0]:ORIGINAL_MAP_WIDTH-y_padding[1], x_padding[0]:ORIGINAL_MAP_WIDTH-x_padding[1], :]
     move_direction = move_direction[y, x]
     
     # Check for mountains or map edges that will physically prevent us from moving there
-    if y-1 <0 or game_state[y-1, x, 4] == 1:
+    if y-1 <0 or cropped_state[y-1, x, 4] == 1:
         move_direction[0] = 0
-    if x+1 >= 23 or game_state[y, x+1, 4] == 1:
+    if x+1 >= width or cropped_state[y, x+1, 4] == 1:
         move_direction[1] = 0
-    if y+1 >= 23 or game_state[y+1, x, 4] == 1:
+    if y+1 >= height or cropped_state[y+1, x, 4] == 1:
         move_direction[2] = 0
-    if x-1 <0 or game_state[y, x-1, 4] == 1:
+    if x-1 <0 or cropped_state[y, x-1, 4] == 1:
         move_direction[3] = 0
     
     move_magnitude = np.sum(move_direction)

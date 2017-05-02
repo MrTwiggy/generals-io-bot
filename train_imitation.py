@@ -120,20 +120,20 @@ def augment_state(original_state, rotation=0, flip_vert=0):
 def augment_direction(original_direction, rotation=0, flip_vert=0):
     move_direction = np.copy(original_direction)
     
-    for i in range(rotation):
-        temp = np.copy(move_direction[:, :, 3])
-        for direction in range(1, 4):
-            prev_direction = (direction - 1) % 4
-            move_direction[:, :, direction] = move_direction[:, :, prev_direction]
-        move_direction[:, :, 0] = temp
+    move_direction = np.rot90(move_direction, k=rotation, axes=(1,0))
+    move_copy = np.copy(move_direction)
+    
+    for direction in range(4):
+        prev_direction = (direction - rotation) % 4
+        move_direction[:, :, direction] = move_copy[:, :, prev_direction]
     
     if flip_vert:
-        move_direction = np.flipud(direction)
+        move_direction = np.flipud(move_direction)
         temp = np.copy(move_direction[:, :, 0])
         move_direction[:, :, 0] = move_direction[:, :, 2]
         move_direction[:, :, 2] = temp
     
-    return direction
+    return move_direction
 
 def augment_batch(batch_X, batch_y, batch_size):
     for i in range(batch_size):
