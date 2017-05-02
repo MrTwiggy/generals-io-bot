@@ -117,17 +117,23 @@ def augment_state(original_state, rotation=0, flip_vert=0):
         
     return state
 
-def augment_direction(original_direction, rotation=0, flip_vert=0):
+def augment_direction(original_direction, rotation=0, flip_vert=0, flip_first=False):
     move_direction = np.copy(original_direction)
     
     move_direction = np.rot90(move_direction, k=rotation, axes=(1,0))
     move_copy = np.copy(move_direction)
     
+    if flip_vert and flip_first:
+        move_direction = np.flipud(move_direction)
+        temp = np.copy(move_direction[:, :, 0])
+        move_direction[:, :, 0] = move_direction[:, :, 2]
+        move_direction[:, :, 2] = temp
+        
     for direction in range(4):
         prev_direction = (direction - rotation) % 4
         move_direction[:, :, direction] = move_copy[:, :, prev_direction]
     
-    if flip_vert:
+    if flip_vert and not flip_first:
         move_direction = np.flipud(move_direction)
         temp = np.copy(move_direction[:, :, 0])
         move_direction[:, :, 0] = move_direction[:, :, 2]

@@ -114,8 +114,8 @@ def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_fla
             augmented_position = augmented_position.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH)
             augmented_direction = augmented_direction.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, NUM_DIRECTIONS)
             
-            proper_position = augment_state(augmented_position, ((4 - rotation) % 4), flip_vert)
-            proper_direction = augment_direction(augmented_direction, ((4 - rotation) % 4), flip_vert)
+            proper_position = augment_state(augmented_position, ((4 - rotation) % 4), flip_vert, flip_first = True)
+            proper_direction = augment_direction(augmented_direction, ((4 - rotation) % 4), flip_vert, flip_first = True)
             tile_position += proper_position
             move_direction += proper_direction
     
