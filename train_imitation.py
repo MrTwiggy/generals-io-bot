@@ -137,7 +137,7 @@ def augment_direction(original_direction, rotation=0, flip_vert=0, flip_first=Fa
         move_direction = np.flipud(move_direction)
         temp = np.copy(move_direction[:, :, 0])
         move_direction[:, :, 0] = move_direction[:, :, 2]
-        move_direction[:, :, 2] = temp
+        move_direction[:, :, 2] = temp 
     
     return move_direction
 
