@@ -119,7 +119,7 @@ def is_valid_replay(replay_info):
     if MAX_REPLAY_AGE_DAYS is not None and days_since(replay_info['started']) > MAX_REPLAY_AGE_DAYS:
         return False
     
-    return max([stars for name, stars in replay_info['rankings']]) >= MIN_REPLAY_STARS
+    return max(int([player['stars']) for player in replay_info['ranking']]) >= MIN_REPLAY_STARS
 
 def download_player_replays(userId, replayFolder = "./replays", gameLimit = 50):
     gameIds = requests.get(REPLAYS_BY_USERNAME.format(userId, gameLimit)).json()
