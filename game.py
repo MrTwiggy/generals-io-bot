@@ -19,7 +19,7 @@ class Game:
     DILATION_STRUCTURE = np.ones(9).reshape(3,3)
     
     @staticmethod
-    def from_replay(replay):
+    def from_replay(replay, version=7):
         width       = replay["mapWidth"]
         height      = replay["mapHeight"]
         cities      = replay["cities"]
@@ -30,7 +30,7 @@ class Game:
         players     = replay["usernames"]
         teams       = replay["teams"]
         
-        game = Game(players, teams)
+        game = Game(players, teams, version)
         
         game.gmap = Map(width, height, teams)
 
@@ -47,9 +47,10 @@ class Game:
         return game
     
     
-    def __init__(self, usernames, teams):
+    def __init__(self, usernames, teams, version=7):
         self.usernames = usernames
         self.teams     = teams
+        self.version = version
         
         self.cities = []
         self.generals = []
@@ -176,9 +177,10 @@ class Game:
             for general_ind in self.generals:
                 self.gmap.increment_army_at(general_ind)
             
-            for city_ind in self.cities:
-                if self.gmap.is_owned(city_ind) or self.gmap.army_at(city_ind) < Game.MIN_CITY_ARMY:
-                    self.gmap.increment_army_at(city_ind)
+            if self.version < 7: # City regeneration removed in 
+                for city_ind in self.cities:
+                    if self.gmap.is_owned(city_ind) or self.gmap.army_at(city_ind) < Game.MIN_CITY_ARMY:
+                        self.gmap.increment_army_at(city_ind)
         
         if (self.turn % Game.FARM_RATE == 0):
             for i in range(self.gmap.size()):
