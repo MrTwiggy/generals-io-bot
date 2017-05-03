@@ -5,15 +5,7 @@ sudo pip3 install -r requirements.txt
 
 # Fetch the replays from pro players first
 sudo mkdir ./replays/ProPlayers
-sudo python3 ./fetch_replays.py ./replays/ProPlayers 4 Spraget 1000000 
-sudo python3 ./fetch_replays.py ./replays/ProPlayers 4 sub 1000000 
-sudo python3 ./fetch_replays.py ./replays/ProPlayers 4 bird 1000000 
-sudo python3 ./fetch_replays.py ./replays/ProPlayers 4 Firefly 1000000 
-sudo python3 ./fetch_replays.py ./replays/ProPlayers 4 Ginger 1000000 
-sudo python3 ./fetch_replays.py ./replays/ProPlayers 4 eemax 1000000 
-sudo python3 ./fetch_replays.py ./replays/ProPlayers 4 birdd 1000000
-sudo python3 ./fetch_replays.py ./replays/ProPlayers 4 0xGG 1000000
-sudo python3 ./fetch_replays.py ./replays/ProPlayers 4 2FAST4U 1000000
+sudo python3 ./fetch_replays.py ./replays/ProPlayers 4 [Pros] 1000000 60 100 
  
 # Convert downloaded .gior files into plain-text JSON .gioreplay format
 sudo sh convertReplays.sh ./replays/ProPlayers
