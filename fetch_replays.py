@@ -26,14 +26,14 @@ REPLAYS_BY_USERNAME = 'http://generals.io/api/replaysForUsername?u={}&offset=0&c
 arg_count = len(sys.argv) - 1
 REPLAY_FOLDER = sys.argv[1] if arg_count >= 1 else "./replays"
 THREAD_COUNT = int(sys.argv[2]) if arg_count >= 2 else 8
-USER_NAME = sys.argv[3] if arg_count >= 3 else "[Bot] FloBot"
+USER_NAMES = [sys.argv[3]] if arg_count >= 3 else "MrTwiggy"
 REPLAY_LIMIT = int(sys.argv[4]) if arg_count >= 4 else 50
 MAX_REPLAY_AGE_DAYS = int(sys.argv[5]) if arg_count >= 5 else None
 MIN_REPLAY_STARS = int(sys.argv[6]) if arg_count >= 6 else 0
 
 
-if USER_NAME == "[Pros]":
-    USER_NAME = ["President Trump",
+if USER_NAMES[0] == "[Pros]":
+    USER_NAMES = ["President Trump",
                      "[uw] zhu☭ge liang",
                      "Spraget",
                      "KJ",
@@ -138,6 +138,8 @@ def download_player_replays(userId, replayFolder = "./replays", gameLimit = 50):
     for i in range(THREAD_COUNT):
         for index in replayIndices[i]:
             replaySets[i].append(replayNames[index])
+            if replayNames[index] not in TOTAL_REPLAYS:
+                TOTAL_REPLAYS.append(replayNames[index])
     threads = []
     #print(replaySets)
     for threadID in range(THREAD_COUNT):
@@ -150,8 +152,7 @@ def download_player_replays(userId, replayFolder = "./replays", gameLimit = 50):
         print("Joining on thread {}".format(threadId))
         threads[threadId].join()
 
-if USER_NAME is not list:
-    USER_NAME = [USER_NAME]
-
-for user_name in USER_NAME:
+TOTAL_REPLAYS = []
+for user_name in USER_NAMES:
     download_player_replays(user_name, REPLAY_FOLDER, REPLAY_LIMIT)
+print("Total replays found and downloaded: {}".format(len(TOTAL_REPLAYS)))
