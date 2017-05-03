@@ -105,17 +105,21 @@ def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_fla
     move_direction = np.zeros((ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, NUM_DIRECTIONS))
     
     from train_imitation import augment_state, augment_direction
-    num_dir = 4 if model_ver == 0 else 1
-    num_flip = 2 if model_ver == 0 else 1
+    num_dir = 4 if model_ver == 1 else 1
+    num_flip = 2 if model_ver == 1 else 1
     for rotation in range(num_dir):
         for flip_vert in range(num_flip):
+            # Augment the game state and then pass it through the policy network
             augmented_state = augment_state(np.copy(game_state), rotation, flip_vert)
             augmented_position, augmented_direction = model.predict(np.array([augmented_state]))
             augmented_position = augmented_position.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH)
             augmented_direction = augmented_direction.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, NUM_DIRECTIONS)
             
+            # De-augment the policy output back into it's original form and shape so it can be combined
             proper_position = augment_state(augmented_position, ((4 - rotation) % 4), flip_vert, flip_first = True)
             proper_direction = augment_direction(augmented_direction, ((4 - rotation) % 4), flip_vert, flip_first = True)
+            
+            # Combine this augmented policy with others
             tile_position += proper_position
             move_direction += proper_direction
     
@@ -160,7 +164,9 @@ def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_fla
         print("Skipping turn, no valid move directions...")
         return None
     move_direction /= move_magnitude
-    target_move = np.random.choice(np.arange(4), p=move_direction)
+    target_move = np.argmax(move_direction)
+    if move_direction[target_move] < 0.5:
+        target_move = np.random.choice(np.arange(4), p=move_direction)
     
     #print("Positions: {}".format(tile_position))
     print("Tiles owned: {}/{}  by {}".format(np.sum(tile_mask), np.sum(tiles_copy == our_flag), our_flag))

@@ -108,11 +108,16 @@ def generate_paddings(height, width):
     
     return (math.ceil(diff_y), math.floor(diff_y)), (math.ceil(diff_x), math.floor(diff_x))
 
-def augment_state(original_state, rotation=0, flip_vert=0):
+def augment_state(original_state, rotation=0, flip_vert=0, flip_first=False):
     state = np.copy(original_state)
     
+    
+    if flip_vert and flip_first:
+        state = np.flipud(state)
+        
     state = np.rot90(state, k=rotation, axes=(1,0))
-    if flip_vert:
+    
+    if flip_vert and not flip_first:
         state = np.flipud(state)
         
     return state
@@ -221,26 +226,35 @@ def frame_generator(file_name, dataset_name, batch_size, augment=False):
 def build_model():
     #---- Shared convolution network 
     main_input = Input(shape=(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, 11,), dtype='float32', name='main_input')
-    cnn = Convolution2D(196, 3, 3, border_mode="same",activation = 'relu')(main_input)
+    cnn = Convolution2D(96, 5, 5, border_mode="same",activation = 'relu')(main_input)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = BatchNormalization()(cnn)
+    cnn = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = BatchNormalization()(cnn)
+    cnn = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = BatchNormalization()(cnn)
+    cnn = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = BatchNormalization()(cnn)
+    cnn = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = BatchNormalization()(cnn)
+    cnn = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
     
     #---- Tile position network
-    tile_position = Convolution2D(1, 9, 9, border_mode="same", activation='relu')(cnn)
+    tile_position = Convolution2D(1, 9, 9, border_mode="same", activation='none')(cnn)
     tile_position = Flatten()(tile_position)
     tile_position = Activation('softmax', name='tile_position')(tile_position)  
     
     #------ Move direction network
-    move_direction = Convolution2D(4, 5, 5, border_mode="same", activation='relu')(cnn)
+    move_direction = Convolution2D(4, 5, 5, border_mode="same", activation='none')(cnn)
     move_direction = Reshape((ORIGINAL_MAP_WIDTH*ORIGINAL_MAP_WIDTH, 4))(move_direction)
-    #move_direction = Lambda(lambda x: tf.nn.softmax(x))(move_direction)
     move_direction = Activation('softmax')(move_direction)  
     move_direction = Flatten(name='move_direction')(move_direction)    
     

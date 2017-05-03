@@ -21,7 +21,6 @@ sudo sh convertReplays.sh ./replays/ProPlayers
 # Generate replay frames from the downloaded replays
 sudo mkdir ./data
 sudo python3 ./GenerateData.py ./replays/ProPlayers 4 1000000 ProPlayerFrames-v1 ./data
-python3 ./train_imitation.py ProPlayerModel1 ProPlayerFrames-v1
  
 # Train model on all the generated replay data
 python3 ./train_imitation.py ProPlayerModel1 ProPlayerFrames-v1

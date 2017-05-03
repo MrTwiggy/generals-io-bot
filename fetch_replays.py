@@ -15,6 +15,8 @@ import numpy as np
 import os
 import urllib.request
 import shutil
+import time
+import calendar
 
 # Example usage: python fetch_replays.py ./replays/MrTwiggy 4 MrTwiggy 5000
 
@@ -26,9 +28,67 @@ REPLAY_FOLDER = sys.argv[1] if arg_count >= 1 else "./replays"
 THREAD_COUNT = int(sys.argv[2]) if arg_count >= 2 else 8
 USER_NAME = sys.argv[3] if arg_count >= 3 else "[Bot] FloBot"
 REPLAY_LIMIT = int(sys.argv[4]) if arg_count >= 4 else 50
+MAX_REPLAY_AGE_DAYS = int(sys.argv[5]) if arg_count >= 5 else None
+MIN_REPLAY_STARS = int(sys.argv[6]) if arg_count >= 6 else 0
 
-#THREAD_COUNT = 5
 
+if USER_NAME == "[Pros]":
+    USER_NAME = ["President Trump",
+                     "[uw] zhu☭ge liang",
+                     "Spraget",
+                     "KJ",
+                     ":ballot_box_with_check:",
+                     "Norden",
+                     "[uw]zhou en☭lai",
+                     "point",
+                     "ぱげてぃ",
+                     "Wuped",
+                     "2FAST4U",
+                     "PioIsPro",
+                     "Plurmörant",
+                     "o_o",
+                     "eemax",
+                     "ERIKER",
+                     "SpongeBOZZ",
+                     "fuzzything44",
+                     "0xGG",
+                     "Sean",
+                     "sora",
+                     "Shadøw",
+                     "Darth Calculus",
+                     "Clearly",
+                     "Firefly",
+                     "Toxic Gerbil",
+                     "DMG-Damageinc",
+                     "Popey ",
+                     "Or",
+                     "Dept of Defence",
+                     "Dept of Defense",
+                     "Blazek",
+                     "BadandPoojee",
+                     "Rhino Cock",
+                     "sub",
+                     "啊雷Alan Ray",
+                     "birddd",
+                     "poofytoo",
+                     "hipp0",
+                     "Sammy",
+                     "DankTemplar",
+                     "rhobes",
+                     "treating",
+                     "Lokraan"]
+
+
+DAYS_TO_MILLISECONDS = float(1000*60*60*24)
+
+def days_since(date_ms):
+    time_diff = max(current_time() - date_ms, 0)
+    
+    return time_diff / DAYS_TO_MILLISECONDS
+
+def current_time():
+    return round(calendar.timegm(time.gmtime())*1000)
+    
 def chunks(l, n):
     n = max(1, n)
     return (l[i:i+n] for i in range(0, len(l), n))
@@ -53,13 +113,21 @@ def download_replays(threadID, replayFolder, replayNames):
             data = response.read() # a `bytes` object
             out_file.write(data)
 
+def is_valid_replay(replay_info):
+    if replay_info['type'] != '1v1': 
+        return False
+    if MAX_REPLAY_AGE_DAYS is not None and days_since(replay_info['started']) > MAX_REPLAY_AGE_DAYS:
+        return False
+    
+    return max([stars for name, stars in replay_info['rankings']]) >= MIN_REPLAY_STARS
+
 def download_player_replays(userId, replayFolder = "./replays", gameLimit = 50):
     gameIds = requests.get(REPLAYS_BY_USERNAME.format(userId, gameLimit)).json()
     #page = requests.get(PROFILE_URL.format(userId))
     #tree = html.fromstring(page.content)
     replayNames = []
     for i in range(len(gameIds)):
-        if gameIds[i]['type'] == '1v1':
+        if is_valid_replay(gameIds[i]):
             replayNames.append(gameIds[i]['id'])
     #replayNames = [gameIds[i]['replayName'] for i in range(len(gameIds))]
     #print(replayNames)
@@ -82,5 +150,8 @@ def download_player_replays(userId, replayFolder = "./replays", gameLimit = 50):
         print("Joining on thread {}".format(threadId))
         threads[threadId].join()
 
-#download_player_replays(2697, "./test_replays", 10)
-download_player_replays(USER_NAME, REPLAY_FOLDER, REPLAY_LIMIT)
+if USER_NAME is not list:
+    USER_NAME = [USER_NAME]
+
+for user_name in USER_NAME:
+    download_player_replays(user_name, REPLAY_FOLDER, REPLAY_LIMIT)
