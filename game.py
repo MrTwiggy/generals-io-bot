@@ -177,10 +177,9 @@ class Game:
             for general_ind in self.generals:
                 self.gmap.increment_army_at(general_ind)
             
-            if self.version < 7: # City regeneration removed in 
-                for city_ind in self.cities:
-                    if self.gmap.is_owned(city_ind) or self.gmap.army_at(city_ind) < Game.MIN_CITY_ARMY:
-                        self.gmap.increment_army_at(city_ind)
+            for city_ind in self.cities:
+                if self.gmap.is_owned(city_ind) or (self.gmap.army_at(city_ind) < Game.MIN_CITY_ARMY and self.version < 7):
+                    self.gmap.increment_army_at(city_ind)
         
         if (self.turn % Game.FARM_RATE == 0):
             for i in range(self.gmap.size()):
