@@ -102,6 +102,7 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
             mountains = replay['mountains']
             moves= replay['moves']
             afks = replay['afks']
+            version = replay['version']
             players = replay['usernames']
             player_count = len(players)
             
@@ -121,8 +122,9 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                 continue
             
             # Initialize a Game object with starting state and players
-            game = generals_game.Game.from_replay(replay)
+            game = generals_game.Game.from_replay(replay, version)
             game_states = [generate_blank_state(), generate_blank_state()]
+            oracle_states = [generate_blank_state(), generate_blank_state()]
             replay_inputs = [[], []]
             replay_targets = [[], []]
             
@@ -135,6 +137,7 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                 # Generate the current game state from the perspective of player with target_id index
                 target_moves = [None, None]
                 map_states = [game.generate_state(0), game.generate_state(1)]
+                map_oracle_states = [game.generate_state(0, True), game.generate_state(1, True)]
                 
                 # Submit all moves and simulate the game state from replay
                 while move_index < moves_count and moves[move_index]['turn'] <= game.turn:
@@ -156,6 +159,8 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                     enemy = 0 if i == 1 else 1
                     
                     target_move = target_moves[i]
+                    
+                    # Initialize and update regular game state
                     tiles, armies, cities, generals = map_states[i]
                     tiles = tiles.reshape(map_height, map_width)
                     armies = armies.reshape(map_height, map_width)
@@ -163,11 +168,26 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                     game_states[i] = update_state(game_states[i], tiles, armies, cities, generals, i, enemy)
                     current_state = np.copy(game_states[i])
                     
+                    # Initialize and update oracle state
+                    oracle_tiles, oracle_armies, oracle_cities, oracle_generals = map_oracle_states[i]
+                    oracle_tiles = oracle_tiles.reshape(map_height, map_width)
+                    oracle_armies = oracle_armies.reshape(map_height, map_width)
+                    #prev_state = np.copy(game_states[i])
+                    oracle_states[i] = update_state(oracle_states[i], oracle_tiles, oracle_armies, oracle_cities, oracle_generals, i, enemy)
+                    current_oracle_state = np.copy(oracle_states[i])
+                    
                     # Skip turns that don't have a move or are randomly filtered out
                     if target_move == None or np.random.binomial(1, 0):
                         continue
                     
+                    # Generate the memory efficient position and direction targets
                     target = generate_target_move(game, target_move)
+                    
+                    # Add the oracle target
+                    oracle_target = current_oracle_state[(0,1,2,3,4,5,6,10)].flatten()
+                    #target = np.concatenate((target, oracle_target), axis=0)
+                    
+                    # Add the final state input and target to the lists
                     replay_inputs[i].append(current_state)
                     replay_targets[i].append(np.copy(target))
                 

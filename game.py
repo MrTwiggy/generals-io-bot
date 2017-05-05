@@ -63,7 +63,7 @@ class Game:
         self.deaths        = []
         
     
-    def generate_state(self, player):
+    def generate_state(self, player, oracle = False):
         tiles = np.copy(self.gmap._map).reshape(self.gmap.height, self.gmap.width)
         armies = np.copy(self.gmap._armies).reshape(self.gmap.height, self.gmap.width)
         cities = []
@@ -71,33 +71,36 @@ class Game:
         
         # Add generals that can be seen by the player
         for general in self.generals:
-            if self.gmap.has_view_of(player, general):
+            if self.gmap.has_view_of(player, general) or oracle:
                 generals.append(self.index_to_coordinates(general))
-        
-        # Add cities that can be seen by the player
-        for city in self.cities:
-            if self.gmap.has_view_of(player, city):
-                cities.append(self.index_to_coordinates(city))
         
         # Calculate a masking of visible territory on the map
         visible_tiles = (np.copy(tiles) == player).astype('int8')
         visible_tiles = ndimage.binary_dilation(visible_tiles, structure=Game.DILATION_STRUCTURE)
         
-        # Reduce all unseen tiles' army counts to zero to prevent impossible information.
-        armies *= visible_tiles
+        if not oracle:
+            # Reduce all unseen tiles' army counts to zero to prevent impossible information.
+            armies *= visible_tiles
+            
+            # Set the fog of war tiles so that no unfair information is given to the player
+            tiles[np.logical_and(visible_tiles == 0, tiles != Map.TILE_MOUNTAIN)] = Map.TILE_FOG
+            tiles[np.logical_and(visible_tiles == 0, tiles == Map.TILE_MOUNTAIN)] = Map.TILE_FOG_OBSTACLE
         
-        # Set the fog of war tiles so that no unfair information is given to the player
-        tiles[np.logical_and(visible_tiles == 0, tiles != Map.TILE_MOUNTAIN)] = Map.TILE_FOG
-        tiles[np.logical_and(visible_tiles == 0, tiles == Map.TILE_MOUNTAIN)] = Map.TILE_FOG_OBSTACLE
-        
-        # TODO: Make it so that cities in the fog are also OBSTACLE and not just FOG?
-
+        #Add cities that can be seen by the player
+        for city in self.cities:
+            if self.gmap.has_view_of(player, city) or oracle:
+                cities.append(self.index_to_coordinates(city))
+            
+            if not self.gmap.has_view_of(player, city) and not oracle:
+                y, x = self.index_to_coordinates(city)
+                tiles[y, x] = Map.TILE_FOG_OBSTACLE
         return tiles.flatten(), armies.flatten(), cities, generals
     
     def winner(self):
         for i in range(len(self.usernames)):
             if i not in self.deaths:
                 return i
+        return None
     
     def index_to_coordinates(self, ind):
         return ind // self.gmap.width, ind % self.gmap.width

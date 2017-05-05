@@ -71,10 +71,6 @@ def update_state(map_state, tiles, armies, cities, generals_list, player, enemy)
     # ----- OWNED BY ENEMY FEATURE
     map_state[visible_tiles, 2] = tiles[visible_tiles] == enemy                          # Owned by enemy
     
-    # Set tile types
-    map_state[:, :, 3] = np.logical_or(tiles == EMPTY, tiles >= 0) # Set empty tiles
-    map_state[:,:,3] = np.logical_or(map_state[:,:,3], tiles == FOG)
-    map_state[:, :, 4] = np.logical_or(tiles == MOUNTAIN, tiles == OBSTACLE)# Set mountains
     
     # ---- CITY TILE FEATURE
     for y, x in cities:
@@ -84,6 +80,14 @@ def update_state(map_state, tiles, armies, cities, generals_list, player, enemy)
     for y, x in generals_list:
         if y != -1 and x != -1:
             map_state[y+y_offset, x+x_offset, 6] = 1
+    
+    
+    # Set tile types
+    map_state[:, :, 3] = np.logical_or(tiles == EMPTY, tiles >= 0) # Set empty tiles
+    map_state[:,:,3] = np.logical_or(map_state[:,:,3], tiles == FOG)
+    map_state[:, :, 4] = np.logical_or(tiles == MOUNTAIN, tiles == OBSTACLE)# Set mountains
+    city_tiles = map_state[:, :, 5] == 1
+    map_state[city_tiles, 4] = 0 # Ensure that cities in fog don't get marked as mountains
     
     #map_state[tiles != FOG, 9] = 0
     
