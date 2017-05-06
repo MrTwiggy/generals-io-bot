@@ -222,7 +222,7 @@ def frame_generator(file_name, dataset_name, batch_size, discount=1.0, augment=F
                 tile_target.append(tile_pos.flatten())
                 move_direction_target.append(move_direction.flatten())
                 
-                game_outcome = np.array([(discount**turns_left) * winner])
+                game_outcome = np.array([(discount**turns_left) * winner]).astype('float32')
                 oracle_state = np.copy(batch_y[i, 7:]).flatten()
                 game_outcome_target.append(game_outcome)
                 oracle_state_target.append(oracle_state)
@@ -241,7 +241,8 @@ def frame_generator(file_name, dataset_name, batch_size, discount=1.0, augment=F
             tile_len = tile_target.shape[1]
             completed_batches += 1
             print("Generated batch #{} in {} seconds...".format(completed_batches, time.time() - start_time))
-            yield batch_X, [batch_y[:, :tile_len], batch_y[:, tile_len:5*tile_len], game_outcome, batch_y[:, 5*tile_len:]]
+            #print("Shapes: ", batch_y[:, :tile_len].shape, batch_y[:, tile_len:5*tile_len].shape, game_outcome.shape, batch_y[:, 5*tile_len:].shape)
+            yield batch_X, [batch_y[:, :tile_len], batch_y[:, tile_len:5*tile_len], game_outcome_target, batch_y[:, 5*tile_len:]]
 
 def build_model():
     #---- Shared convolution network 
@@ -289,6 +290,7 @@ def build_model():
     #------ Value Network Outcome Prediction
     game_outcome = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
     game_outcome = BatchNormalization()(game_outcome)
+    game_outcome = Flatten()(game_outcome)
     game_outcome = Dense(1, activation='tanh', name='game_outcome')(game_outcome)
     
     #------ Oracle map state prediction from observation

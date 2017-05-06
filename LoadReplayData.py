@@ -175,7 +175,7 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                     oracle_tiles = oracle_tiles.reshape(map_height, map_width)
                     oracle_armies = oracle_armies.reshape(map_height, map_width)
                     #prev_state = np.copy(game_states[i])
-                    oracle_states[i] = update_state(oracle_states[i], oracle_tiles, oracle_armies, oracle_cities, oracle_generals, i, enemy)
+                    oracle_states[i] = update_state(oracle_states[i], game.turn, oracle_tiles, oracle_armies, oracle_cities, oracle_generals, i, enemy)
                     current_oracle_state = np.copy(oracle_states[i])
                     
                     # Skip turns that don't have a move or are randomly filtered out
@@ -186,11 +186,11 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                     target = generate_target_move(game, target_move)
                     
                     # Store the last move made by this player
-                    x, y, direction, height, width, winner = target
+                    x, y, direction, height, width, winner, turn = target
                     last_moves[i] = generate_target_tensors(x, y, direction)
                     
                     # Add the oracle target
-                    oracle_target = current_oracle_state[(0,1,2,3,4,5,6,10)].flatten()
+                    oracle_target = current_oracle_state[:, :, (0,1,2,3,4,5,6,10)].flatten()
                     final_target = np.concatenate((target, oracle_target), axis=0)
                     
                     # Add the final state input and target to the lists

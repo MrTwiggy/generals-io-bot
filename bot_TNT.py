@@ -125,7 +125,7 @@ def update_state(map_state, turn, tiles, armies, cities, generals_list, player, 
         direction = direction.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, 4)
         map_state[:, :, 26] = np.copy(position)
         map_state[:, :, 27:31] = np.copy(direction)
-        map_state[position, 32] = 0
+        map_state[position == 1, 32] = 0
     
     # Constant ones?
     map_state[:, :, 31] = 1
