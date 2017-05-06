@@ -161,9 +161,9 @@ def augment_batch(batch_X, batch_y, batch_size):
         
         # Augment the game state and tile target and move direction target
         batch_X[i] = augment_state(batch_X[i], rotation, flip_vert)
+        final_oracle_state = augment_state(example_oracle_state, rotation, flip_vert)
         example_tile = augment_state(example_tile, rotation, flip_vert)
         final_direction = augment_direction(example_direction, rotation, flip_vert)
-        final_oracle_state = augment_direction(example_oracle_state, rotation, flip_vert)
         
         batch_y[i, :tile_length] = example_tile.flatten()
         batch_y[i, tile_length:5*tile_length] = final_direction.flatten()
