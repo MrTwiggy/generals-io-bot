@@ -265,22 +265,20 @@ def build_model():
     cnn = BatchNormalization()(cnn)
     cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
-    cnn = BatchNormalization()(cnn)
     
     #---- Tile position network
-    tile_position = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    tile_position = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
     tile_position = BatchNormalization()(tile_position)
-    tile_position = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(tile_position)
+    tile_position = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(tile_position)
     tile_position = BatchNormalization()(tile_position)
     tile_position = Convolution2D(1, 9, 9, border_mode="same", activation='linear')(tile_position)
     tile_position = Flatten()(tile_position)
     tile_position = Activation('softmax', name='tile_position')(tile_position)  
     
     #------ Move direction network
-    move_direction = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    move_direction = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
     move_direction = BatchNormalization()(move_direction)
-    move_direction = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(move_direction)
+    move_direction = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(move_direction)
     move_direction = BatchNormalization()(move_direction)
     move_direction = Convolution2D(4, 9, 9, border_mode="same", activation='linear')(move_direction)
     move_direction = Reshape((ORIGINAL_MAP_WIDTH*ORIGINAL_MAP_WIDTH, 4))(move_direction)
@@ -288,13 +286,14 @@ def build_model():
     move_direction = Flatten(name='move_direction')(move_direction)    
     
     #------ Value Network Outcome Prediction
-    game_outcome = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    game_outcome = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
     game_outcome = BatchNormalization()(game_outcome)
     game_outcome = Flatten()(game_outcome)
+    #game_outcome = Dense(256, activation='relu')(game_outcome)
     game_outcome = Dense(1, activation='tanh', name='game_outcome')(game_outcome)
     
     #------ Oracle map state prediction from observation
-    oracle_state = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    oracle_state = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
     oracle_state = BatchNormalization()(oracle_state)
     oracle_state = Convolution2D(8, 9, 9, border_mode="same", activation='linear')(oracle_state)
     oracle_state = Flatten(name='oracle_state')(oracle_state)    
@@ -307,7 +306,7 @@ def build_model():
     model_loss = {'tile_position': 'categorical_crossentropy', 'move_direction': multi_label_crossentropy, 
                   'game_outcome' : 'mean_squared_error', 'oracle_state' : 'mean_squared_error'}
     model_metrics = {'move_direction': multi_label_accuracy, 'tile_position':'accuracy'}
-    model_weighting = {'tile_position': 1, 'move_direction' : 2.0, 'game_outcome' : 1.0, 'oracle_state' : 1.0}
+    model_weighting = {'tile_position': 1, 'move_direction' : 2.0, 'game_outcome' : 1.0, 'oracle_state' : 0.025}
     model.compile('rmsprop', loss=model_loss, metrics=model_metrics, loss_weights=model_weighting)
     
     return model
