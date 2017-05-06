@@ -36,8 +36,9 @@ test = 0
 def move_to_direction(game, move):
     start_y, start_x = game.index_to_coordinates(move['start'])
     end_y, end_x = game.index_to_coordinates(move['end'])
-    
-    
+    return coordinates_to_direction(start_y, start_x, end_y, end_x)
+
+def coordinates_to_direction(start_y, start_x, end_y, end_x):
     direction = NORTH
     
     if end_x - start_x == 1:
@@ -48,7 +49,7 @@ def move_to_direction(game, move):
         direction = SOUTH
     
     return direction
-    
+
 def generate_target_move(game, move):
     is50 = int(move['is50'])
     start_y, start_x = game.index_to_coordinates(move['start'])
@@ -67,7 +68,7 @@ def generate_target(game, start_y, start_x, end_y, end_x):
         
     pad_x = math.ceil(float(ORIGINAL_MAP_WIDTH - game.gmap.width) / 2.0)
     pad_y = math.ceil(float(ORIGINAL_MAP_WIDTH - game.gmap.height) / 2.0)
-    return np.array([start_y + pad_y, start_x + pad_x, direction, game.gmap.height, game.gmap.width])
+    return np.array([start_y + pad_y, start_x + pad_x, direction, game.gmap.height, game.gmap.width, 0, game.turn])
 
 def generate_target_tensors(x, y, direction):
     tile_choice = np.zeros((ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH))
@@ -127,6 +128,7 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
             oracle_states = [generate_blank_state(), generate_blank_state()]
             replay_inputs = [[], []]
             replay_targets = [[], []]
+            last_moves = [None, None]
             
             moves_count = len(moves)
             move_index = 0
@@ -165,7 +167,7 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                     tiles = tiles.reshape(map_height, map_width)
                     armies = armies.reshape(map_height, map_width)
                     prev_state = np.copy(game_states[i])
-                    game_states[i] = update_state(game_states[i], tiles, armies, cities, generals, i, enemy)
+                    game_states[i] = update_state(game_states[i], game.turn, tiles, armies, cities, generals, i, enemy, last_moves[i])
                     current_state = np.copy(game_states[i])
                     
                     # Initialize and update oracle state
@@ -177,25 +179,35 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                     current_oracle_state = np.copy(oracle_states[i])
                     
                     # Skip turns that don't have a move or are randomly filtered out
-                    if target_move == None or np.random.binomial(1, 0):
+                    if target_move is None:
                         continue
                     
                     # Generate the memory efficient position and direction targets
                     target = generate_target_move(game, target_move)
                     
+                    # Store the last move made by this player
+                    x, y, direction, height, width, winner = target
+                    last_moves[i] = generate_target_tensors(x, y, direction)
+                    
                     # Add the oracle target
                     oracle_target = current_oracle_state[(0,1,2,3,4,5,6,10)].flatten()
-                    #target = np.concatenate((target, oracle_target), axis=0)
+                    final_target = np.concatenate((target, oracle_target), axis=0)
                     
                     # Add the final state input and target to the lists
                     replay_inputs[i].append(current_state)
-                    replay_targets[i].append(np.copy(target))
+                    replay_targets[i].append(np.copy(final_target))
                 
                 # Update the game and proceed to the next turn
                 game.update()
             
             print("Ending simulation with winner {} after {} turns...".format(game.winner(), game.turn))
             game_winner = game.winner()
+            
+            # Check to make sure no failed games with no winner
+            if game_winner is None:
+                for i in range(25):                    
+                    print('ERROR! ENDED GAME WITH NO WINNER!!!!! SKIPPING')
+                continue
             
             print("Sampled ", (len(replay_inputs[0]) + len(replay_inputs[1])))
             # replay_input should be shape (N, 22, 22, 11) for N sampled states
@@ -214,8 +226,17 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                 if (replay['stars'][player_id] < MIN_REPLAY_STARS):
                     continue
                 target_length = len(replay_targets[player_id][0])
-                replay_inputs[player_id] = np.concatenate(replay_inputs[player_id],axis=0).reshape(-1, ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, MAP_CHANNELS).astype(np.float32)
-                replay_targets[player_id] = np.concatenate(replay_targets[player_id],axis=0).reshape(-1, target_length).astype(np.float32)
+                
+                inputs = np.concatenate(replay_inputs[player_id],axis=0).reshape(-1, ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, MAP_CHANNELS).astype(np.float32)
+                targets = np.concatenate(replay_targets[player_id],axis=0).reshape(-1, target_length).astype(np.float32)
+                
+                # Set whether the player won or not in their targets
+                targets[:,5] = 1 if player_id == game_winner else -1
+                # Set how many turns were remaining in the game from this move onward
+                targets[:, 6] = game.turn - targets[:, 6] - 1
+                
+                replay_inputs[player_id] = inputs
+                replay_targets[player_id] = targets
                 
                 # Add the collected sample frames to our disk collection
                 lock.acquire()

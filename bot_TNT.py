@@ -23,7 +23,7 @@ EMPTY = -1
 MOUNTAIN = -2
 FOG = -3
 OBSTACLE = -4
-MAP_CHANNELS = 11
+MAP_CHANNELS = 33
 
 
 def pad(state, fill_value = 0, map_width = ORIGINAL_MAP_WIDTH):
@@ -40,7 +40,7 @@ def generate_blank_state():
     return np.zeros((ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, MAP_CHANNELS)).astype('float32')
 map_state = generate_blank_state()
 
-def update_state(map_state, tiles, armies, cities, generals_list, player, enemy):
+def update_state(map_state, turn, tiles, armies, cities, generals_list, player, enemy, last_move = None):
     tiles, y_padding, x_padding = pad(np.array(tiles), MOUNTAIN)
     armies, y_padding, x_padding = pad(np.array(armies), 0)
     
@@ -50,11 +50,11 @@ def update_state(map_state, tiles, armies, cities, generals_list, player, enemy)
     
     
     # Set state tiles with fog --- FOG FEATURE
-    map_state[:,:,7] = (np.logical_or(tiles == FOG, tiles == OBSTACLE)).astype('int32')
+    map_state[:,:,7] = (np.logical_or(tiles == FOG, tiles == OBSTACLE)).astype('float32')
     visible_tiles = map_state[:, :, 7] != 1
     
     # Sets whether a tile has ever been discovered --- DISCOVERED FEATURE
-    map_state[:, :, 8] = np.logical_or(map_state[:, :, 8] == 1, map_state[:, :, 7] != 1).astype('int32')
+    map_state[:, :, 8] = np.logical_or(map_state[:, :, 8] == 1, map_state[:, :, 7] != 1).astype('float32')
     undiscovered_tiles = map_state[:, :, 8] != 1
     
     # Update number of turns in fog ---- TURNS IN FOG FEATURE
@@ -86,13 +86,54 @@ def update_state(map_state, tiles, armies, cities, generals_list, player, enemy)
     map_state[:, :, 3] = np.logical_or(tiles == EMPTY, tiles >= 0) # Set empty tiles
     map_state[:,:,3] = np.logical_or(map_state[:,:,3], tiles == FOG)
     map_state[:, :, 4] = np.logical_or(tiles == MOUNTAIN, tiles == OBSTACLE)# Set mountains
+    
+    # Ensure that known cities don't appear as other tile types
     city_tiles = map_state[:, :, 5] == 1
     map_state[city_tiles, 4] = 0 # Ensure that cities in fog don't get marked as mountains
+    map_state[city_tiles, 3] = 0 # Ensure that cities that are owned aren't marked as empty
     
     #map_state[tiles != FOG, 9] = 0
     
     # Set army unit counts ---- ARMY TILE COUNT FEATURE
     map_state[visible_tiles, 10] = armies[visible_tiles]
+    
+    # Set whether this tile has enough army to validly be moved by us
+    map_state[visible_tiles, 11] = np.logical_and(armies[visible_tiles] > 1, tiles[visible_tiles] == player)
+    
+    # Set whether this tile has enough army to validly be moved by enemy
+    map_state[visible_tiles, 12] = np.logical_and(armies[visible_tiles] > 1, tiles[visible_tiles] == enemy)
+    
+    # Set current round in the game
+    current_round = min(turn, 50*8 - 1) // 50
+    round_features = np.arange(8) == current_round
+    map_state[:, :, 13:21] = round_features
+    
+    # Set current time in round
+    current_round_turn = (turn % 50) // 10
+    turn_features = np.arange(5) == current_round_turn
+    map_state[:, :, 21:26] = turn_features
+    
+    # Turns since last moved
+    map_state[:, :, 32] += 1
+    
+    # Set last move made?
+    if last_move is None:
+        map_state[:, :, 26:31] = 0
+    else:
+        position, direction = last_move
+        position = position.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH)
+        direction = direction.reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, 4)
+        map_state[:, :, 26] = np.copy(position)
+        map_state[:, :, 27:31] = np.copy(direction)
+        map_state[position, 32] = 0
+    
+    # Constant ones?
+    map_state[:, :, 31] = 1
+    
+    
+    # Constant zeros?
+    #map_state[:, :, 27] = 0
+    
     map_state = map_state.astype('float32')
     return map_state
 
@@ -228,6 +269,7 @@ if __name__ == "__main__":
     armies=[]
     cities=[]
     generals_list=[]
+    last_move = None
     # ------------Main Bot Loop Logic Begins------------
     print("Waiting for updates...")
     for state in general.get_updates():
@@ -251,7 +293,7 @@ if __name__ == "__main__":
         
         tiles_copy, y_padding, x_padding = pad(np.copy(tiles), MOUNTAIN, ORIGINAL_MAP_WIDTH)
         armies_copy, y_padding, x_padding = pad(np.copy(armies), 0, ORIGINAL_MAP_WIDTH)
-        map_state = update_state(map_state, tiles, armies, cities, generals_list, our_flag, enemy_flag)
+        map_state = update_state(map_state, turn, tiles, armies, cities, generals_list, our_flag, enemy_flag, last_move)
         
         copy_state = np.copy(map_state).astype('int16')
         
@@ -264,13 +306,17 @@ if __name__ == "__main__":
             y, x, y_dest, x_dest, y_padding, x_padding = action
         
         move = " "
-        print(state['replay_url'])
         x_dest = int(x_dest)
         y_dest = int(y_dest)
         print("Submitting move {} from ({}, {}) to ({}, {}), computed in {} seconds".format(move, y, x, y_dest, x_dest, time.time() - start_time))
+        
+        # Keep track of the last submitted move
+        from LoadReplayData import coordinates_to_direction, generate_target_tensors
+        direction = coordinates_to_direction(y, x, y_dest, x_dest)
+        last_move = generate_target_tensors(y, x, direction)
+        
+        # Submit the calculate move
         general.move(y, x, y_dest, x_dest)
-        # TODO: Feed the above state into neural network, get output move, and then
-        # submit move using generals.move(y_origin, x_origin, y_destination, x_destination) and then repeat
 
 
 

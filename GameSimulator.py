@@ -36,6 +36,7 @@ def simulate_game(game_id, models, replay_name):
     
     game_inputs = [[], []]
     game_targets = [[], []]
+    last_moves = [None, None]
     
     while not game.is_over():
         print("---------------Game #{}, turn {}-----------------------".format(game_id, game.turn))             
@@ -46,7 +47,7 @@ def simulate_game(game_id, models, replay_name):
             tiles, armies, cities, generals = game.generate_state(i)
             tiles = tiles.reshape(height, width)
             armies = armies.reshape(height, width)
-            game_states[i] = update_state(game_states[i], tiles, armies, cities, generals, i, enemy)
+            game_states[i] = update_state(game_states[i], game.turn, tiles, armies, cities, generals, i, enemy, last_moves[i])
         
         # Let each bot perform an action
         for i in range(2):
@@ -63,9 +64,14 @@ def simulate_game(game_id, models, replay_name):
                 print("Player ", i, " moved from ", y, x, " to ", y_dest, x_dest)
                 success = game.handle_attack(i, game.gmap.index_for(y, x), game.gmap.index_for(y_dest, x_dest), False)
                 
-                if success and (np.random.binomial(1, 0.05) or len(game_inputs[i]) <= 0):
+                if success:
+                    direction = coordinates_to_direction(y, x, y_dest, x_dest)
+                    last_moves[i] = generate_target_tensors(y, x, direction)
+                    
                     game_inputs[i].append(state_copy)
-                    game_targets[i].append(np.concatenate((generate_target(game, y, x, y_dest, x_dest), np.array([0]))))
+                    game_targets[i].append(generate_target(game, y, x, y_dest, x_dest))
+                else:
+                    print("Error: Submitted move was unsuccessful...")
                     
             else:
                 print("Unable to submit move for player ", i)
