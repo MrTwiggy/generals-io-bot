@@ -169,7 +169,7 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                     enemy_stats = (np.sum(oracle_armies[oracle_tiles == enemy]), np.sum(oracle_tiles == enemy))
                     player_stats = (np.sum(oracle_armies[oracle_tiles == i]), np.sum(oracle_tiles == i))
                     #prev_state = np.copy(game_states[i])
-                    oracle_states[i] = update_state(oracle_states[i], game.turn, oracle_tiles, oracle_armies, oracle_cities, oracle_generals, i, enemy, player_stats, enemy_stats)
+                    oracle_states[i] = update_state(oracle_states[i], game.turn, oracle_tiles, oracle_armies, oracle_cities, oracle_generals, i, enemy, player_stats, enemy_stats, last_moves[i])
                     current_oracle_state = np.copy(oracle_states[i])
                     
                     # Initialize and update regular game state
@@ -177,7 +177,7 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                     tiles = tiles.reshape(map_height, map_width)
                     armies = armies.reshape(map_height, map_width)
                     prev_state = np.copy(game_states[i])
-                    game_states[i] = update_state(game_states[i], game.turn, tiles, armies, cities, generals, i, enemy, last_moves[i], player_stats, enemy_stats)
+                    game_states[i] = update_state(game_states[i], game.turn, tiles, armies, cities, generals, i, enemy, player_stats, enemy_stats, last_moves[i])
                     current_state = np.copy(game_states[i])
                     
                     # Skip turns that don't have a move or are randomly filtered out
