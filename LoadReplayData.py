@@ -162,21 +162,23 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                     
                     target_move = target_moves[i]
                     
+                    # Initialize and update oracle state
+                    oracle_tiles, oracle_armies, oracle_cities, oracle_generals = map_oracle_states[i]
+                    oracle_tiles = oracle_tiles.reshape(map_height, map_width)
+                    oracle_armies = oracle_armies.reshape(map_height, map_width)
+                    enemy_stats = (np.sum(oracle_armies[oracle_tiles == enemy]), np.sum(oracle_tiles == enemy))
+                    player_stats = (np.sum(oracle_armies[oracle_tiles == i]), np.sum(oracle_tiles == i))
+                    #prev_state = np.copy(game_states[i])
+                    oracle_states[i] = update_state(oracle_states[i], game.turn, oracle_tiles, oracle_armies, oracle_cities, oracle_generals, i, enemy, player_stats, enemy_stats)
+                    current_oracle_state = np.copy(oracle_states[i])
+                    
                     # Initialize and update regular game state
                     tiles, armies, cities, generals = map_states[i]
                     tiles = tiles.reshape(map_height, map_width)
                     armies = armies.reshape(map_height, map_width)
                     prev_state = np.copy(game_states[i])
-                    game_states[i] = update_state(game_states[i], game.turn, tiles, armies, cities, generals, i, enemy, last_moves[i])
+                    game_states[i] = update_state(game_states[i], game.turn, tiles, armies, cities, generals, i, enemy, last_moves[i], player_stats, enemy_stats)
                     current_state = np.copy(game_states[i])
-                    
-                    # Initialize and update oracle state
-                    oracle_tiles, oracle_armies, oracle_cities, oracle_generals = map_oracle_states[i]
-                    oracle_tiles = oracle_tiles.reshape(map_height, map_width)
-                    oracle_armies = oracle_armies.reshape(map_height, map_width)
-                    #prev_state = np.copy(game_states[i])
-                    oracle_states[i] = update_state(oracle_states[i], game.turn, oracle_tiles, oracle_armies, oracle_cities, oracle_generals, i, enemy)
-                    current_oracle_state = np.copy(oracle_states[i])
                     
                     # Skip turns that don't have a move or are randomly filtered out
                     if target_move is None:

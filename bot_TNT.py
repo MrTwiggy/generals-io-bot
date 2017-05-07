@@ -23,7 +23,7 @@ EMPTY = -1
 MOUNTAIN = -2
 FOG = -3
 OBSTACLE = -4
-MAP_CHANNELS = 33
+MAP_CHANNELS = 39
 
 
 def pad(state, fill_value = 0, map_width = ORIGINAL_MAP_WIDTH):
@@ -40,7 +40,7 @@ def generate_blank_state():
     return np.zeros((ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, MAP_CHANNELS)).astype('float32')
 map_state = generate_blank_state()
 
-def update_state(map_state, turn, tiles, armies, cities, generals_list, player, enemy, last_move = None):
+def update_state(map_state, turn, tiles, armies, cities, generals_list, player, enemy, last_move = None, player_stats, enemy_stats):
     tiles, y_padding, x_padding = pad(np.array(tiles), MOUNTAIN)
     armies, y_padding, x_padding = pad(np.array(armies), 0)
     
@@ -130,6 +130,17 @@ def update_state(map_state, turn, tiles, armies, cities, generals_list, player, 
     # Constant ones?
     map_state[:, :, 31] = 1
     
+    # Enemy Army & Land
+    map_state[:, :, 33] = enemy_stats[0]
+    map_state[:, :, 34] = enemy_stats[1]
+    
+    # Player Army & Land
+    map_state[:, :, 35] = player_stats[0]
+    map_state[:, :, 36] = player_stats[1]
+    
+    # Whether player is currently in the lead or not
+    map_state[:, :, 37] = enemy_states[0] > player_stats[0]
+    map_state[:, :, 38] = enemy_states[1] > player_stats[1]
     
     # Constant zeros?
     #map_state[:, :, 27] = 0

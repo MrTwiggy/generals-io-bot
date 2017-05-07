@@ -35,7 +35,7 @@ from sklearn.utils import shuffle
 
 import tensorflow as tf
 
-MAP_CHANNELS = 33
+MAP_CHANNELS = 39
 
 def multi_label_accuracy(y_true, y_pred):
     batch_size = K.shape(y_true)[0]
