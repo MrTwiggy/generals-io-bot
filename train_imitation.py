@@ -85,7 +85,7 @@ def multi_label_crossentropy(y_true, y_pred):
     
     move_mask = K.any(K.reshape(y_true, (batch_size, ORIGINAL_MAP_WIDTH*ORIGINAL_MAP_WIDTH, 4)), axis=-1)#(batch_size, 50,50)
     #move_counts = K.sum(move_mask, axis=-1)#(batch_size)
-    move_counts = tf_count(move_mask, 1)
+    move_counts = tf_count(K.cast(move_mask, dtype='int32'), 1)
     
     pred_flat /= tf.reduce_sum(pred_flat, reduction_indices=len(pred_flat.get_shape()) - 1, keep_dims=True)
     # manual computation of crossentropy
@@ -127,15 +127,15 @@ def augment_state(original_state, rotation=0, flip_vert=0, flip_first=False):
 def augment_direction(original_direction, rotation=0, flip_vert=0, flip_first=False):
     move_direction = np.copy(original_direction)
     
-    move_direction = np.rot90(move_direction, k=rotation, axes=(1,0))
-    move_copy = np.copy(move_direction)
     
     if flip_vert and flip_first:
         move_direction = np.flipud(move_direction)
         temp = np.copy(move_direction[:, :, 0])
         move_direction[:, :, 0] = move_direction[:, :, 2]
         move_direction[:, :, 2] = temp
-        
+    
+    move_direction = np.rot90(move_direction, k=rotation, axes=(1,0))
+    move_copy = np.copy(move_direction)
     for direction in range(4):
         prev_direction = (direction - rotation) % 4
         move_direction[:, :, direction] = move_copy[:, :, prev_direction]
@@ -156,18 +156,20 @@ def augment_batch(batch_X, batch_y, batch_size):
         tile_length = ORIGINAL_MAP_WIDTH**2
         example_tile = np.copy(batch_y[i, :tile_length]).reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH)
         example_direction = np.copy(batch_y[i, tile_length:5*tile_length]).reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, 4)
-        example_oracle_state = np.copy(batch_y[i, 5*tile_length:]).reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, 8)
+        #example_oracle_state = np.copy(batch_y[i, 5*tile_length:]).reshape(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, 8)
         #direction = np.argmax(example_direction[example_tile == 1])
         
         # Augment the game state and tile target and move direction target
+        last_move_direction = np.copy(batch_X[i][:, :, 27:31])
         batch_X[i] = augment_state(batch_X[i], rotation, flip_vert)
-        final_oracle_state = augment_state(example_oracle_state, rotation, flip_vert)
+        batch_X[i][:, :, 27:31] = augment_direction(last_move_direction, rotation, flip_vert)
+        #final_oracle_state = augment_state(example_oracle_state, rotation, flip_vert)
         example_tile = augment_state(example_tile, rotation, flip_vert)
         final_direction = augment_direction(example_direction, rotation, flip_vert)
         
         batch_y[i, :tile_length] = example_tile.flatten()
         batch_y[i, tile_length:5*tile_length] = final_direction.flatten()
-        batch_y[i, 5*tile_length:] = final_oracle_state.flatten()
+        #batch_y[i, 5*tile_length:] = final_oracle_state.flatten()
         
     
     batch_X = np.concatenate(np.array([batch_X]), axis=0)
@@ -186,6 +188,22 @@ def augment_batch(batch_X, batch_y, batch_size):
     
     return batch_X, batch_y
 
+class BatchGenerator:
+    def __init__(self, file_name, dataset_name, batch_size, discount=1.0, augment=False,workers=1):
+        self.generators = [frame_generator(file_name, dataset_name, batch_size, discount, augment) for i in range(workers)]
+        self.generator_index = 0
+        self.lock = multiprocessing.Lock()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        with self.lock:
+           index = self.generator_index
+           generator = self.generators[index]
+           self.generator_index = (self.generator_index + 1) % len(self.generators)
+           #print(self.generator_index, len(self.generators))
+        return next(generator)
 # training_input_orig is of shape (num_samples, map_height, map_width, 11)
 # training_target_orig is of shape (num_samples, 1),
 # each row in target is a tuple of ((y,x), direction) where
@@ -208,10 +226,13 @@ def frame_generator(file_name, dataset_name, batch_size, discount=1.0, augment=F
             start_time = time.time()
             current_batch_size = len(batch_indices)
             #print(sorted(batch_indices))
+            start = time.time()
             batch_X, batch_y = sample_dataset(file_name, dataset_name, current_batch_size, sorted(batch_indices))
+            read_duration = time.time() - start
            
            
             # Construct the target tensors
+            start = time.time()
             tile_target = []
             move_direction_target = []
             game_outcome_target = []
@@ -222,97 +243,118 @@ def frame_generator(file_name, dataset_name, batch_size, discount=1.0, augment=F
                 tile_target.append(tile_pos.flatten())
                 move_direction_target.append(move_direction.flatten())
                 
-                game_outcome = np.array([(discount**turns_left) * winner]).astype('float32')
-                oracle_state = np.copy(batch_y[i, 7:]).flatten()
-                game_outcome_target.append(game_outcome)
-                oracle_state_target.append(oracle_state)
+                #game_outcome = np.array([(discount**turns_left) * winner]).astype('float32')
+                #oracle_state = np.copy(batch_y[i, 7:]).flatten()
+                #game_outcome_target.append(game_outcome)
+                #oracle_state_target.append(oracle_state)
            
             tile_target = np.array(tile_target).astype('float32')
             move_direction_target = np.array(move_direction_target).astype('float32')
-            game_outcome_target = np.array(game_outcome_target).astype('float32')
-            oracle_state_target = np.array(oracle_state_target).astype('float32')
-            batch_y = np.concatenate((tile_target, move_direction_target, oracle_state_target), axis=1)
-           
+            #game_outcome_target = np.array(game_outcome_target).astype('float32')
+            #oracle_state_target = np.array(oracle_state_target).astype('float32')
+            batch_y = np.concatenate((tile_target, move_direction_target), axis=1)#, oracle_state_target), axis=1)
+            set_duration = time.time() - start
+            start_augment = time.time()
+            
             # Perform random data augmentation on frames independantly
             if augment:
                 batch_X, batch_y = augment_batch(batch_X, batch_y, current_batch_size)
-           
+            augment_duration = time.time() - start_augment
             # Yield the augmentated and formatted example batch that was loaded off disk
             tile_len = tile_target.shape[1]
             completed_batches += 1
-            print("Generated batch #{} in {} seconds...".format(completed_batches, time.time() - start_time))
+            if completed_batches % 100 == 0:
+                tf.reset_default_graph()
+                #print("Generated ", dataset_name, " batch #{} in {} seconds vs {} for aug, {} for set, {} for read...".format(completed_batches, time.time() - start_time, augment_duration,
+                #      set_duration, read_duration))
+                #print("Generated ", dataset_name, " batch #{} in {} seconds vs {} for aug, {} for set, {} for read...".format(completed_batches, time.time() - start_time, augment_duration,
+                #      set_duration, read_duration))
+                #print("Generated ", dataset_name, " batch #{} in {} seconds vs {} for aug, {} for set, {} for read...".format(completed_batches, time.time() - start_time, augment_duration,
+                #      set_duration, read_duration))
+                #print("Generated ", dataset_name, " batch #{} in {} seconds vs {} for aug, {} for set, {} for read...".format(completed_batches, time.time() - start_time, augment_duration,
+                #      set_duration, read_duration))
             #print("Shapes: ", batch_y[:, :tile_len].shape, batch_y[:, tile_len:5*tile_len].shape, game_outcome.shape, batch_y[:, 5*tile_len:].shape)
-            yield batch_X, [batch_y[:, :tile_len], batch_y[:, tile_len:5*tile_len], game_outcome_target, batch_y[:, 5*tile_len:]]
+            
+            yield batch_X, [batch_y[:, :tile_len], batch_y[:, tile_len:5*tile_len]]#, game_outcome_target, batch_y[:, 5*tile_len:]]
 
 def build_model():
     #---- Shared convolution network 
     main_input = Input(shape=(ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH, MAP_CHANNELS,), dtype='float32', name='main_input')
-    cnn = Convolution2D(128, 5, 5, border_mode="same",activation = 'relu')(main_input)
+    cnn = Convolution2D(196, 5, 5, border_mode="same",activation = 'relu')(main_input)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
-    cnn = Convolution2D(128, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    cnn = BatchNormalization()(cnn)
+    cnn = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     cnn = BatchNormalization()(cnn)
     
     #---- Tile position network
-    tile_position = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    tile_position = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     tile_position = BatchNormalization()(tile_position)
-    tile_position = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(tile_position)
+    tile_position = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(tile_position)
     tile_position = BatchNormalization()(tile_position)
-    tile_position = Convolution2D(1, 9, 9, border_mode="same", activation='linear')(tile_position)
+    tile_position = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(tile_position)
+    tile_position = BatchNormalization()(tile_position)
+    tile_position = Convolution2D(1, 1, 1, border_mode="same", activation='linear')(tile_position)
     tile_position = Flatten()(tile_position)
     tile_position = Activation('softmax', name='tile_position')(tile_position)  
     
     #------ Move direction network
-    move_direction = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    move_direction = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(cnn)
     move_direction = BatchNormalization()(move_direction)
-    move_direction = Convolution2D(96, 3, 3, border_mode="same", activation = 'relu')(move_direction)
+    move_direction = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(move_direction)
     move_direction = BatchNormalization()(move_direction)
-    move_direction = Convolution2D(4, 9, 9, border_mode="same", activation='linear')(move_direction)
+    move_direction = Convolution2D(196, 3, 3, border_mode="same", activation = 'relu')(move_direction)
+    move_direction = BatchNormalization()(move_direction)
+    move_direction = Convolution2D(4, 1, 1, border_mode="same", activation='linear')(move_direction)
     move_direction = Reshape((ORIGINAL_MAP_WIDTH*ORIGINAL_MAP_WIDTH, 4))(move_direction)
     move_direction = Activation('softmax')(move_direction)  
     move_direction = Flatten(name='move_direction')(move_direction)    
     
     #------ Value Network Outcome Prediction
-    game_outcome = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    """game_outcome = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
     game_outcome = BatchNormalization()(game_outcome)
     game_outcome = Flatten()(game_outcome)
     #game_outcome = Dense(256, activation='relu')(game_outcome)
-    game_outcome = Dense(1, activation='tanh', name='game_outcome')(game_outcome)
+    game_outcome = Dense(1, activation='tanh', name='game_outcome')(game_outcome)"""
     
     #------ Oracle map state prediction from observation
-    oracle_state = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
+    """oracle_state = Convolution2D(64, 3, 3, border_mode="same", activation = 'relu')(cnn)
     oracle_state = BatchNormalization()(oracle_state)
     oracle_state = Convolution2D(8, 9, 9, border_mode="same", activation='linear')(oracle_state)
-    oracle_state = Flatten(name='oracle_state')(oracle_state)    
+    oracle_state = Flatten(name='oracle_state')(oracle_state)    """
     
     #----- Is half-move network
     #is50 = Dense(1, activation='sigmoid', name='is50')(merge([flattened_cnn, tile_position, move_direction], mode='concat'))
     
     #---- Final built model
-    model = Model(input=main_input, output=[tile_position, move_direction, game_outcome, oracle_state])#, is50])
+    model = Model(input=main_input, output=[tile_position, move_direction])#, game_outcome, oracle_state])#, is50])
     model_loss = {'tile_position': 'categorical_crossentropy', 'move_direction': multi_label_crossentropy, 
-                  'game_outcome' : 'mean_squared_error', 'oracle_state' : 'mean_squared_error'}
-    model_metrics = {'move_direction': multi_label_accuracy, 'tile_position':'accuracy'}
-    model_weighting = {'tile_position': 1, 'move_direction' : 2.0, 'game_outcome' : 1.0, 'oracle_state' : 0.025}
-    model.compile('rmsprop', loss=model_loss, metrics=model_metrics, loss_weights=model_weighting)
+                  }
+    model_metrics = {'move_direction' : multi_label_accuracy, 'tile_position':'accuracy'}
+    model_weighting = {'tile_position': 1.0, 'move_direction' : 1.0}
+    model.compile(keras.optimizers.RMSprop(lr=0.0003, rho=0.9, epsilon=1e-08, decay=0.0), loss=model_loss, metrics=model_metrics, loss_weights=model_weighting)
     
     return model
 
 def load_model_train(dataFolder, modelName):
     model_path = '{}/{}.h5'.format(dataFolder, modelName)
+    if not os.path.exists(model_path):
+        return None
+    
     #model = build_model()
     #model.load_weights(model_path)
     model = keras.models.load_model(model_path, custom_objects={'multi_label_crossentropy':multi_label_crossentropy, 'multi_label_accuracy':multi_label_accuracy})
@@ -324,13 +366,19 @@ if __name__ == "__main__":
     
     MODEL_NAME = sys.argv[1] if arg_count >= 1 else "default-model"
     DATA_FILE_NAME = sys.argv[2] if arg_count >= 2 else "default-data"
-    BATCH_SIZE = 64
-    DISCOUNT = 0.99
+    GPUS = sys.argv[3] if arg_count >= 3 else "0"
+    BATCH_SIZE = int(sys.argv[4]) if arg_count >= 4 else 64
+    os.environ["CUDA_VISIBLE_DEVICES"]=GPUS
+    DISCOUNT = 1.0
     DATA_FOLDER = "./data"
     
     print("----STARTING TRAINING------")
     np.random.seed(1337) # for reproducibility  
-    model = build_model()
+    
+    model = load_model_train(DATA_FOLDER, MODEL_NAME)
+    if model is None:
+        model = build_model()
+        #model.load_weights("./data/{}.h5".format(MODEL_NAME))
     
     for epoch in range(1,30):
         print("Initializing meta epoch: ", epoch)
@@ -346,12 +394,12 @@ if __name__ == "__main__":
         print("Validation shapes: ", validation_target_shape, validation_input_shape)
         
         model.fit_generator(
-            frame_generator(DATA_FILE_NAME, "training", BATCH_SIZE, discount=DISCOUNT, augment=True),
-            validation_data=frame_generator(DATA_FILE_NAME, "validation", BATCH_SIZE, discount=DISCOUNT, augment=False),
-            samples_per_epoch=training_input_shape[0],
-            nb_val_samples=validation_input_shape[0],
-            nb_epoch=10,
-            verbose=1,
+            BatchGenerator(DATA_FILE_NAME, "training", BATCH_SIZE, discount=DISCOUNT, augment=True, workers=1),
+            validation_data=BatchGenerator(DATA_FILE_NAME, "validation", BATCH_SIZE, discount=DISCOUNT, augment=False, workers=1),
+            samples_per_epoch=training_input_shape[0]/4,
+            nb_val_samples=validation_input_shape[0]/4,
+            nb_epoch=12,
+            verbose=1, max_q_size=25, #workers=1,
             callbacks=[EarlyStopping(patience=8), tensorboard,
                        ModelCheckpoint(checkpoint_name,verbose=1,save_best_only=True)])
         

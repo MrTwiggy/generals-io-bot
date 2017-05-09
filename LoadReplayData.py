@@ -29,7 +29,7 @@ import multiprocessing
 MATCH_ID_REQUEST = 'http://halite.io/api/web/game?userID={}&limit={}'
 REPLAY_REQUEST = 'https://s3.amazonaws.com/halitereplaybucket/{}'
 
-MIN_REPLAY_STARS = 90
+MIN_REPLAY_STARS = 100
 test = 0
 
 
@@ -188,12 +188,15 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
                     target = generate_target_move(game, target_move)
                     
                     # Store the last move made by this player
-                    x, y, direction, height, width, winner, turn = target
+                    y, x, direction, height, width, winner, turn = target
                     last_moves[i] = generate_target_tensors(x, y, direction)
+                    
+                    if np.random.binomial(1, 0.1):
+                        continue
                     
                     # Add the oracle target
                     oracle_target = current_oracle_state[:, :, (0,1,2,3,4,5,6,10)].flatten()
-                    final_target = np.concatenate((target, oracle_target), axis=0)
+                    final_target = target#np.concatenate((target, oracle_target), axis=0)
                     
                     # Add the final state input and target to the lists
                     replay_inputs[i].append(current_state)
@@ -225,7 +228,7 @@ def load_replays(threadId, replayFolder, replayNames, file_name, lock, validatio
             
             # Add the sample states and targets to the thread-safe queue
             for player_id in [0, 1]:
-                if (replay['stars'][player_id] < MIN_REPLAY_STARS):
+                if (replay['stars'][player_id] < MIN_REPLAY_STARS):# or replay['usernames'][player_id] != "Dept of Defense"):
                     continue
                 target_length = len(replay_targets[player_id][0])
                 
@@ -280,7 +283,7 @@ def fetch_replay_names(replayFolder, gamesToFetch, required_players=None):
 def sample_dataset(file_name, dataset_name="training", sample_size = 64, sample_indices=None, data_folder='./data'):
     file_name = '{}/{}.h5'.format(data_folder, file_name)
     
-    with h5py.File(file_name, 'a') as h5f:
+    with h5py.File(file_name, 'r') as h5f:
         X_data = h5f["{}_input".format(dataset_name)]
         y_data = h5f["{}_target".format(dataset_name)]        
         
@@ -290,6 +293,7 @@ def sample_dataset(file_name, dataset_name="training", sample_size = 64, sample_
             sample_indices = np.random.choice(np.arange(n), size=sample_size, replace=False)
         
         X, y = X_data[sample_indices], y_data[sample_indices]
+        #X, y = X_data[10204:sample_size+10204], y_data[0:sample_size]
     
     return np.copy(X), np.copy(y)
 
@@ -301,6 +305,40 @@ def _dataset_exists(file_path, dataset_name, data_folder='./data'):
         exists = (dataset_name in h5f)
     
     return exists
+
+def copy_dataset(old_file_name, new_file_name, data_folder='./data', chunk_size=5000):
+    oldFile = h5py.File('{}/{}.h5'.format(data_folder, old_file_name), 'a')
+    newFile = h5py.File('{}/{}.h5'.format(data_folder, new_file_name), 'w')
+    
+    for dataset_name in ['validation', 'training']:
+        for data_type in ['target', 'input']:
+            data_name = '{}_{}'.format(dataset_name, data_type)
+            dataset = newFile.create_dataset(data_name, oldFile[data_name].shape, chunks=None)
+            n = oldFile[data_name].shape[0]
+            i = n
+            while i > 0:
+                start = max(0, i - chunk_size)
+                dataset[start:i] = oldFile[data_name][start:i]
+                oldFile[data_name].resize(start, axis=0)
+                print(i, start, oldFile[data_name].shape, data_name)
+                i = start
+            print("Completed transfer for ", data_name, " so deleting now...")
+            del oldFile[data_name]
+            oldFile.close()
+            oldFile = h5py.File('{}/{}.h5'.format(data_folder, old_file_name), 'a')
+    
+    oldFile.close()
+    newFile.close()
+ 
+def get_dataset_info(file_name, dataset_name, data_folder='./data'):
+    file_path = '{}/{}.h5'.format(data_folder, file_name)
+    with h5py.File(file_path, 'a') as h5f:
+        #print("Fetching info for ", file_name, " ", file_path, dataset_name)
+        X_shape = h5f["{}_input".format(dataset_name)].shape
+        y_shape = h5f["{}_target".format(dataset_name)].shape
+    
+    return X_shape, y_shape
+ 
 # Example: Add some newly collected training input and target frames to dataset
 # add_to_dataset("FlobotFrames", "training", input_samples, target_samples)
 def add_to_dataset(file_name, dataset_name, X, y, data_folder='./data'):
@@ -314,14 +352,6 @@ def add_to_dataset(file_name, dataset_name, X, y, data_folder='./data'):
         _add_samples_to_dataset(file_path, "{}_input".format(dataset_name), X, data_folder)
         _add_samples_to_dataset(file_path, "{}_target".format(dataset_name), y, data_folder)
 
-def get_dataset_info(file_name, dataset_name, data_folder='./data'):
-    file_path = '{}/{}.h5'.format(data_folder, file_name)
-    with h5py.File(file_path, 'a') as h5f:
-        #print("Fetching info for ", file_name, " ", file_path, dataset_name)
-        X_shape = h5f["{}_input".format(dataset_name)].shape
-        y_shape = h5f["{}_target".format(dataset_name)].shape
-    
-    return X_shape, y_shape
 
 def _initialize_dataset(file_path, dataset_name, data, data_folder='./data'):
     with h5py.File(file_path, 'a') as h5f:

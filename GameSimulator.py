@@ -5,17 +5,8 @@ Created on Tue Apr 18 20:28:51 2017
 @author: MrTwiggy
 """
 
+
 import sys
-import numpy as np
-import time
-import h5py
-import game as generals_game
-
-from sklearn.model_selection import train_test_split
-from bot_TNT import update_state, calculate_action
-from LoadReplayData import fetch_replay_names, load_replay, generate_blank_state, generate_target
-from train_imitation import load_model_train
-
 if __name__ == "__main__":
     if len(sys.argv) >= 5:
         SIMULATION_NAME = sys.argv[1]
@@ -25,18 +16,35 @@ if __name__ == "__main__":
         MODEL_NAMES = [MODEL_NAME1, MODEL_NAME2]
         GAME_COUNT = int(sys.argv[5])
         MAX_TURN_LIMIT = int(sys.argv[6]) if len(sys.argv) >= 7 else 250
+        GPUS = sys.argv[7] if len(sys.argv) >= 8 else "0,1"
+        
+        import os
+        os.environ["CUDA_VISIBLE_DEVICES"]=GPUS
+
+import numpy as np
+import time
+import h5py
+import game as generals_game
+
+from sklearn.model_selection import train_test_split
+from bot_TNT import update_state, calculate_action
+from LoadReplayData import fetch_replay_names, load_replay, generate_blank_state, generate_target, coordinates_to_direction, generate_target_tensors
+from train_imitation import load_model_train
 
 def simulate_game(game_id, models, replay_name):
+    #os.environ["CUDA_VISIBLE_DEVICES"]="1"
     forced_finish = False
     replay = load_replay(REPLAY_FOLDER, replay_name)
     game = generals_game.Game.from_replay(replay)
     game_states = [generate_blank_state(), generate_blank_state()]
+    stats = [None, None]
     height = game.gmap.height
     width = game.gmap.width
     
     game_inputs = [[], []]
     game_targets = [[], []]
     last_moves = [None, None]
+    internal_states = [None, None]
     
     while not game.is_over():
         print("---------------Game #{}, turn {}-----------------------".format(game_id, game.turn))             
@@ -45,19 +53,27 @@ def simulate_game(game_id, models, replay_name):
         for i in range(2):
             enemy = 0 if i == 1 else 1
             tiles, armies, cities, generals = game.generate_state(i)
+            internal_states[i] = (tiles, armies, cities, generals)
             tiles = tiles.reshape(height, width)
             armies = armies.reshape(height, width)
-            game_states[i] = update_state(game_states[i], game.turn, tiles, armies, cities, generals, i, enemy, last_moves[i])
+            
+            oracle_tiles, oracle_armies, oracle_cities, oracle_generals = game.generate_state(i, oracle=True)
+            oracle_tiles = oracle_tiles.reshape(height, width)
+            oracle_armies = oracle_armies.reshape(height, width)
+            enemy_stats = (np.sum(oracle_armies[oracle_tiles == enemy]), np.sum(oracle_tiles == enemy))
+            player_stats = (np.sum(oracle_armies[oracle_tiles == i]), np.sum(oracle_tiles == i))
+            #stats[i] = player_stats
+            game_states[i] = update_state(game_states[i], game.turn, tiles, armies, cities, generals, i, enemy, player_stats, enemy_stats, last_moves[i])
         
         # Let each bot perform an action
         for i in range(2):
             enemy = 0 if i == 1 else 1
-            tiles, armies, cities, generals = game.generate_state(i)
+            tiles, armies, cities, generals = internal_states[i]
             tiles = tiles.reshape(height, width)
             armies = armies.reshape(height, width)
             current_state = np.copy(game_states[i])
             state_copy = np.copy(current_state)
-            action = calculate_action(models[i], current_state, game.turn, tiles, armies, i, enemy, 0)
+            action = calculate_action(models[i], current_state, game.turn, tiles, armies, i, enemy, i)
             
             if action is not None:
                 y, x, y_dest, x_dest, y_padding, x_padding = action
@@ -66,7 +82,7 @@ def simulate_game(game_id, models, replay_name):
                 
                 if success:
                     direction = coordinates_to_direction(y, x, y_dest, x_dest)
-                    last_moves[i] = generate_target_tensors(y, x, direction)
+                    last_moves[i] = generate_target_tensors(x, y, direction)
                     
                     game_inputs[i].append(state_copy)
                     game_targets[i].append(generate_target(game, y, x, y_dest, x_dest))

@@ -6,7 +6,7 @@ Created on Wed Apr 26 18:19:36 2017
 """
 
 import sys
-from LoadReplayData import load_all_replays
+from LoadReplayData import load_all_replays, copy_dataset
 
 
 # --------------------- Main Logic -----------------------
@@ -22,4 +22,7 @@ if __name__ == "__main__":
     DATA_FILE_NAME = sys.argv[4] if arg_count >= 4 else "default-data"
     DATA_FOLDER = sys.argv[5] if arg_count >= 5 else "./data"
     
-    load_all_replays(DATA_FILE_NAME, REPLAY_FOLDER, GAMES_TO_LOAD, THREAD_COUNT)
+    temp_data_name = "{}-temp".format(DATA_FILE_NAME)
+    
+    load_all_replays(temp_data_name, REPLAY_FOLDER, GAMES_TO_LOAD, THREAD_COUNT)
+    copy_dataset(temp_data_name, DATA_FILE_NAME)
