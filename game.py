@@ -144,7 +144,7 @@ class Game:
             print("Start or end tile was out of map bounds! Rejecting move...")
             return False
         if self.gmap.tile_at(start) != player:
-            print("a")
+            #print("a")
             return False
 
         end_tile = self.gmap.tile_at(end)
@@ -152,7 +152,7 @@ class Game:
         succeeded = self.gmap.attack(start, end, is50, self.generals)
 
         if not succeeded:
-            print("b")
+            #print("b")
             return False
 
         new_end_tile = self.gmap.tile_at(end)

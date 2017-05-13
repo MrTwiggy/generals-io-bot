@@ -132,7 +132,8 @@ def download_player_replays(userId, replayFolder = "./replays", gameLimit = 50):
     #replayNames = [gameIds[i]['replayName'] for i in range(len(gameIds))]
     #print(replayNames)
     #print(replayNames)
-    print("1v1 replays located: {}".format(len(replayNames)))
+    print("1v1 replays located: {} by ".format(len(replayNames), userId))
+    #return None
     replayIndices = np.array_split(np.arange(len(replayNames)), THREAD_COUNT)
     replaySets = [[] for i in range(THREAD_COUNT)]
     for i in range(THREAD_COUNT):
@@ -153,6 +154,7 @@ def download_player_replays(userId, replayFolder = "./replays", gameLimit = 50):
         threads[threadId].join()
 
 TOTAL_REPLAYS = []
+USER_NAMES = ["Dept of Defense"]
 for user_name in USER_NAMES:
     download_player_replays(user_name, REPLAY_FOLDER, REPLAY_LIMIT)
 print("Total replays found and downloaded: {}".format(len(TOTAL_REPLAYS)))

@@ -147,13 +147,14 @@ def update_state(map_state, turn, tiles, armies, cities, generals_list, player, 
     map_state = map_state.astype('float32')
     return map_state
 
-def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_flag, model_ver=0):
+def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_flag, model_ver=0, verbose=True):
     if turn < 23:
         return None
     start_time = time.time()
     tiles_copy, y_padding, x_padding = pad(np.copy(tiles), MOUNTAIN, ORIGINAL_MAP_WIDTH)
     armies_copy, y_padding, x_padding = pad(np.copy(armies), 0, ORIGINAL_MAP_WIDTH)
     tile_mask = (np.logical_and(tiles_copy == our_flag, armies_copy > 1)).astype('float32')
+    tile_mask = tile_mask[y_padding[0]:ORIGINAL_MAP_WIDTH-y_padding[1], x_padding[0]:ORIGINAL_MAP_WIDTH-x_padding[1]]
     
     # Feed state into network and predict
     tile_position = np.zeros((ORIGINAL_MAP_WIDTH, ORIGINAL_MAP_WIDTH))
@@ -188,19 +189,29 @@ def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_fla
     move_direction /= float(num_dir*num_flip)
     
     
-    tile_position = tile_position * tile_mask
     tile_position = tile_position[y_padding[0]:ORIGINAL_MAP_WIDTH-y_padding[1], x_padding[0]:ORIGINAL_MAP_WIDTH-x_padding[1]]
-    if np.sum(tile_position) <= 0:
-        print("Skipping turn, no valid tile positions...")
-        return None
+    tile_position = tile_position * tile_mask
+    movable_tiles = np.sum(tile_mask)
+    total_prob = np.sum(tile_position)
+    if total_prob <= 0:
+        if movable_tiles <= 0:
+            if verbose:
+                print("Skipping turn, no valid tile positions...")
+            return None
+        else:
+            if verbose:
+                print("Encountered a state with valid tiles but zero probability assigned with {} movable tiles...".format(movable_tiles))
+            tile_position[tile_mask == 1] = 1 # Evenly weight all the possible positions
+            
     tile_position = tile_position / np.sum(tile_position)        
     tile_count = len(tile_position.flatten())        
         
     #-----TILE ACTION CHOICE------
     
-    tile_index = np.random.choice(np.arange(tile_count), p=tile_position.flatten())
-    if model_ver != -1:    
-        tile_index = np.argmax(tile_position.flatten())
+    tile_index = np.argmax(tile_position.flatten())
+    
+    if total_prob <= 0: # TODO: REMOVE TRUE FOR NOT GAME SIMULATING
+        tile_index = np.random.choice(np.arange(tile_count), p=tile_position.flatten())   
     
     y, x = np.unravel_index(tile_index, tile_position.shape)
     x = int(x)
@@ -225,17 +236,19 @@ def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_fla
     
     move_magnitude = np.sum(move_direction)
     if move_magnitude == 0:
-        print("Skipping turn, no valid move directions...")
+        if verbose:
+            print("Skipping turn, no valid move directions...")
         return None
     move_direction /= move_magnitude
     
     target_move = np.argmax(move_direction)
-    if move_direction[target_move] < 0.5:
+    if move_direction[target_move] < 0.5: # TODO: REMOVE TRUE FOR GAME SIMULATING
         target_move = np.random.choice(np.arange(4), p=move_direction)
         
     #print("Positions: {}".format(tile_position))
-    print("Tiles owned: {}/{}  by {}".format(np.sum(tile_mask), np.sum(tiles_copy == our_flag), our_flag))
-    print("Move chosen: {} from {} with position confidence: {}".format(target_move, move_direction, tile_position[y, x]))
+    if verbose:
+        print("Tiles owned: {}/{}  by {}".format(np.sum(tile_mask), np.sum(tiles_copy == our_flag), our_flag))
+        print("Move chosen: {} from {} with position confidence: {}".format(target_move, move_direction, tile_position[y, x]))
     if target_move == -1:
         y_dest = y
         x_dest = x
@@ -256,7 +269,8 @@ def calculate_action(model, game_state, turn, tiles, armies, our_flag, enemy_fla
         x_dest = x - 1
         move = "WEST"
     
-    print("Calculated action in {} seconds".format(time.time() - start_time))
+    if verbose:
+        print("Calculated action in {} seconds".format(time.time() - start_time))
     return y, x, y_dest, x_dest, y_padding, x_padding
 
 def pretty_print(matrix):

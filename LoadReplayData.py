@@ -271,7 +271,6 @@ def fetch_replay_names(replayFolder, gamesToFetch, required_players=None):
                 replay_file = load_replay(replayFolder, replay)
                 if len(replay_file['usernames']) != required_players:
                     continue
-                
             replayNames.append(replay)
     replayIndices = np.random.choice(np.arange(len(replayNames)), size=min(len(replayNames), gamesToFetch), replace=False)
     replayNames = np.array(replayNames)[replayIndices]
